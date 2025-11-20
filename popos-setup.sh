@@ -215,56 +215,7 @@ sudo tee /etc/apt/sources.list.d/github-cli.list
 sudo apt update
 sudo apt install -y gh
 
-###########################################################
-# 99. Configure lid-close suspend + disable unwanted wakeup devices
-###########################################################
-
-echo "==== Configuring lid-close behavior (suspend while docked) ===="
-
-# Backup logind.conf
-sudo cp /etc/systemd/logind.conf /etc/systemd/logind.conf.backup
-
-# Apply safe suspend settings
-sudo tee /etc/systemd/logind.conf > /dev/null <<EOF
-[Login]
-HandleLidSwitch=suspend
-HandleLidSwitchDocked=suspend
-LidSwitchIgnoreInhibited=no
-EOF
-
-echo "==== Disabling all currently enabled wakeup devices ===="
-
-# Create script to toggle enabled wakeup devices
-WAKE_SCRIPT="/usr/local/bin/disable-wake.sh"
-
-sudo tee $WAKE_SCRIPT > /dev/null <<'EOF'
-#!/bin/bash
-# Loop through all ACPI wakeup devices that are currently enabled and toggle them off
-for dev in $(cat /proc/acpi/wakeup | awk '$3=="*enabled" {print $1}'); do
-    echo "$dev" > /proc/acpi/wakeup
-done
-EOF
-
-sudo chmod +x $WAKE_SCRIPT
-
-# Create systemd service to run on boot
-WAKE_SERVICE="/etc/systemd/system/disable-wake.service"
-sudo tee $WAKE_SERVICE > /dev/null <<EOF
-[Unit]
-Description=Disable unwanted wakeup devices
-After=multi-user.target
-
-[Service]
-Type=oneshot
-ExecStart=$WAKE_SCRIPT
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable disable-wake.service
-
-echo "Wakeup devices will be disabled at boot. You can also run $WAKE_SCRIPT now to apply immediately."
-
-echo "==== Setup complete! Restart required for Docker group ===="
+echo "==== Setup complete! ===="
+echo ""
+echo "For suspend/lid-close configuration, run: ~/Proj/linux-setup/fix-suspend.sh"
+echo "Restart required for Docker group changes to take effect."
