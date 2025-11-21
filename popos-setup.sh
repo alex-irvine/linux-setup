@@ -146,7 +146,7 @@ rm bottom.deb
 ###########################################################
 echo "==== Installing Evolution ===="
 wait_for_apt
-sudo apt install -y evolution
+sudo apt install -y evolution evolution-ews
 
 ###########################################################
 # 8. Git
@@ -183,7 +183,14 @@ sudo apt install -y ./dbeaver.deb
 rm dbeaver.deb
 
 ###########################################################
-# 11. Copilot CLI & Copilot Terminal
+# 11. Remmina (RDP/VNC client)
+###########################################################
+echo "==== Installing Remmina ===="
+wait_for_apt
+sudo apt install -y remmina remmina-plugin-rdp remmina-plugin-vnc
+
+###########################################################
+# 12. Copilot CLI & Copilot Terminal
 ###########################################################
 echo "==== Installing Node.js + npm (for Copilot CLI) ===="
 wait_for_apt

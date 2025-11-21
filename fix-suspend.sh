@@ -22,7 +22,6 @@ HandleLidSwitchExternalPower=suspend
 LidSwitchIgnoreInhibited=no
 # Power button triggers suspend
 HandlePowerKey=suspend
-HoldoffTimeoutSec=0
 EOF
 
 # Create comprehensive wakeup disable script
@@ -104,29 +103,23 @@ sudo systemctl enable disable-wake.service
 echo "Disabling wakeup devices now..."
 sudo $WAKE_SCRIPT
 
-# Restart logind to apply new configuration
-echo "Restarting systemd-logind..."
-sudo systemctl restart systemd-logind
-
 echo ""
 echo "==== Configuration complete! ===="
 echo ""
 echo "Summary:"
-echo "  ✓ Lid close now triggers suspend"
-echo "  ✓ Lid switch wakeup disabled (won't wake from suspend when opened)"
+echo "  ✓ Logind configured for suspend on lid close"
+echo "  ✓ Lid switch wakeup disabled"
 echo "  ✓ All USB wakeup sources disabled"
 echo "  ✓ ACPI wakeup devices disabled"
 echo "  ✓ Configuration persists across reboots"
+echo ""
+echo "IMPORTANT: Log out and log back in for lid close settings to take effect."
+echo "           (Wakeup device settings are already active)"
 echo ""
 echo "Verification commands:"
 echo "  - Lid config: cat /etc/systemd/logind.conf"
 echo "  - ACPI wakeup: cat /proc/acpi/wakeup"
 echo "  - Lid switch: cat /sys/bus/acpi/devices/PNP0C0D:00/power/wakeup"
 echo "  - Service: systemctl status disable-wake.service"
-echo "  - Wakeup sources: sudo cat /sys/kernel/debug/wakeup_sources"
 echo ""
-echo "NOTE: The lid switch wakeup is now disabled. To wake from suspend:"
-echo "  - Press the power button, or"
-echo "  - Connect/disconnect power adapter"
-echo ""
-echo "Test by closing your laptop lid - it should suspend and stay suspended."
+echo "NOTE: To wake from suspend, press the power button or plug/unplug power."
