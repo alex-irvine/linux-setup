@@ -21,7 +21,43 @@ wait_for_apt
 sudo apt install -y curl wget gnupg ca-certificates apt-transport-https software-properties-common
 
 ###########################################################
-# 1. ZSH + Oh My Zsh (and make default)
+# 1. Neovim + LazyVim
+###########################################################
+echo "==== Installing Neovim ===="
+wait_for_apt
+sudo apt install -y neovim
+
+echo "==== Installing Nerd Font (JetBrains Mono) ===="
+JBM_TEMP="/tmp/JetBrainsMono.zip"
+curl -fLo "$JBM_TEMP" https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip
+mkdir -p ~/.local/share/fonts/JetBrainsMono
+unzip -o "$JBM_TEMP" -d ~/.local/share/fonts/JetBrainsMono
+rm "$JBM_TEMP"
+fc-cache -fv
+
+echo "==== Installing LazyVim ===="
+if [ -d "$HOME/.config/nvim" ]; then
+    echo "Backing up existing nvim config..."
+    mv ~/.config/nvim ~/.config/nvim.backup-$(date +%Y%m%d-%H%M%S)
+fi
+if [ -d "$HOME/.local/share/nvim" ]; then
+    mv ~/.local/share/nvim ~/.local/share/nvim.backup-$(date +%Y%m%d-%H%M%S)
+fi
+if [ -d "$HOME/.local/state/nvim" ]; then
+    mv ~/.local/state/nvim ~/.local/state/nvim.backup-$(date +%Y%m%d-%H%M%S)
+fi
+if [ -d "$HOME/.cache/nvim" ]; then
+    mv ~/.cache/nvim ~/.cache/nvim.backup-$(date +%Y%m%d-%H%M%S)
+fi
+
+git clone https://github.com/LazyVim/starter ~/.config/nvim
+rm -rf ~/.config/nvim/.git
+
+echo ""
+echo "IMPORTANT: Set your terminal font to 'JetBrainsMono Nerd Font' in terminal preferences."
+
+###########################################################
+# 2. ZSH + Oh My Zsh (and make default)
 ###########################################################
 echo "==== Installing Zsh ===="
 wait_for_apt
@@ -39,7 +75,7 @@ if [ ! -d "$HOME/.oh-my-zsh" ]; then
 fi
 
 ###########################################################
-# 2. Chrome
+# 3. Chrome
 ###########################################################
 echo "==== Installing Google Chrome ===="
 wait_for_apt
@@ -48,7 +84,7 @@ sudo apt install -y ./google-chrome-stable_current_amd64.deb
 rm google-chrome-stable_current_amd64.deb
 
 ###########################################################
-# 3. VS Code
+# 4. VS Code
 ###########################################################
 echo "==== Installing VS Code ===="
 
@@ -92,7 +128,7 @@ done
 echo "VS Code extension install complete."
 
 ###########################################################
-# 4. Docker
+# 5. Docker
 ###########################################################
 echo "==== Installing Docker ===="
 sudo apt remove -y docker docker.io containerd runc || true
@@ -111,7 +147,7 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin d
 sudo usermod -aG docker $USER
 
 ###########################################################
-# 5. Lazydocker + alias lzd
+# 6. Lazydocker + alias lzd
 ###########################################################
 echo "==== Installing Lazydocker ===="
 LAZYDOCKER_VERSION=$(curl -s https://api.github.com/repos/jesseduffield/lazydocker/releases/latest | grep tag_name | cut -d '"' -f4)
@@ -124,7 +160,24 @@ if ! grep -q "alias lzd=" ~/.zshrc; then
 fi
 
 ###########################################################
-# 6. Bottom (btm)
+# 7. kubectl (Kubernetes CLI)
+###########################################################
+echo "==== Installing kubectl ===="
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+rm kubectl
+
+###########################################################
+# 8. k9s (Kubernetes CLI UI)
+###########################################################
+echo "==== Installing k9s ===="
+K9S_VERSION=$(curl -s https://api.github.com/repos/derailed/k9s/releases/latest | grep tag_name | cut -d '"' -f4)
+curl -L "https://github.com/derailed/k9s/releases/download/${K9S_VERSION}/k9s_Linux_amd64.tar.gz" -o k9s.tar.gz
+sudo tar -xzvf k9s.tar.gz -C /usr/local/bin k9s
+rm k9s.tar.gz
+
+###########################################################
+# 9. Bottom (btm)
 ###########################################################
 echo "==== Installing Bottom (btm) ===="
 
@@ -142,21 +195,21 @@ sudo apt install -y ./bottom.deb
 rm bottom.deb
 
 ###########################################################
-# 7. Evolution
+# 10. Evolution
 ###########################################################
 echo "==== Installing Evolution ===="
 wait_for_apt
 sudo apt install -y evolution evolution-ews
 
 ###########################################################
-# 8. Git
+# 11. Git
 ###########################################################
 echo "==== Installing Git ===="
 wait_for_apt
 sudo apt install -y git
 
 ###########################################################
-# 9. GitKraken
+# 12. GitKraken
 ###########################################################
 echo "==== Installing GitKraken ===="
 
@@ -174,7 +227,7 @@ rm gitkraken.deb
 
 
 ###########################################################
-# 10. DBeaver
+# 13. DBeaver
 ###########################################################
 echo "==== Installing DBeaver CE ===="
 wait_for_apt
@@ -183,14 +236,21 @@ sudo apt install -y ./dbeaver.deb
 rm dbeaver.deb
 
 ###########################################################
-# 11. Remmina (RDP/VNC client)
+# 14. Remmina (RDP/VNC client)
 ###########################################################
 echo "==== Installing Remmina ===="
 wait_for_apt
 sudo apt install -y remmina remmina-plugin-rdp remmina-plugin-vnc
 
 ###########################################################
-# 12. Copilot CLI & Copilot Terminal
+# 15. Azure CLI
+###########################################################
+echo "==== Installing Azure CLI ===="
+wait_for_apt
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+###########################################################
+# 16. Copilot CLI & Copilot Terminal
 ###########################################################
 echo "==== Installing Node.js + npm (for Copilot CLI) ===="
 wait_for_apt
