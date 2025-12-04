@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 wait_for_apt() {
-    while sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
-        echo "APT is locked by another process, waiting..."
-        sleep 2
-    done
+  while sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+    echo "APT is locked by another process, waiting..."
+    sleep 2
+  done
 }
 
 set -e
@@ -19,6 +19,8 @@ sudo apt update && sudo apt upgrade -y
 echo "==== Installing required tools ===="
 wait_for_apt
 sudo apt install -y curl wget gnupg ca-certificates apt-transport-https software-properties-common
+
+echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 
 ###########################################################
 # 1. Neovim + LazyVim
@@ -37,17 +39,17 @@ fc-cache -fv
 
 echo "==== Installing LazyVim ===="
 if [ -d "$HOME/.config/nvim" ]; then
-    echo "Backing up existing nvim config..."
-    mv ~/.config/nvim ~/.config/nvim.backup-$(date +%Y%m%d-%H%M%S)
+  echo "Backing up existing nvim config..."
+  mv ~/.config/nvim ~/.config/nvim.backup-$(date +%Y%m%d-%H%M%S)
 fi
 if [ -d "$HOME/.local/share/nvim" ]; then
-    mv ~/.local/share/nvim ~/.local/share/nvim.backup-$(date +%Y%m%d-%H%M%S)
+  mv ~/.local/share/nvim ~/.local/share/nvim.backup-$(date +%Y%m%d-%H%M%S)
 fi
 if [ -d "$HOME/.local/state/nvim" ]; then
-    mv ~/.local/state/nvim ~/.local/state/nvim.backup-$(date +%Y%m%d-%H%M%S)
+  mv ~/.local/state/nvim ~/.local/state/nvim.backup-$(date +%Y%m%d-%H%M%S)
 fi
 if [ -d "$HOME/.cache/nvim" ]; then
-    mv ~/.cache/nvim ~/.cache/nvim.backup-$(date +%Y%m%d-%H%M%S)
+  mv ~/.cache/nvim ~/.cache/nvim.backup-$(date +%Y%m%d-%H%M%S)
 fi
 
 git clone https://github.com/LazyVim/starter ~/.config/nvim
@@ -64,13 +66,13 @@ wait_for_apt
 sudo apt install -y zsh
 
 if [ "$SHELL" != "/usr/bin/zsh" ]; then
-    echo "Setting Zsh as default shell"
-    chsh -s /usr/bin/zsh
+  echo "Setting Zsh as default shell"
+  chsh -s /usr/bin/zsh
 fi
 
 echo "==== Installing Oh My Zsh ===="
 if [ ! -d "$HOME/.oh-my-zsh" ]; then
-    RUNZSH=no KEEP_ZSHRC=yes \
+  RUNZSH=no KEEP_ZSHRC=yes \
     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 fi
 
@@ -89,13 +91,13 @@ rm google-chrome-stable_current_amd64.deb
 echo "==== Installing VS Code ===="
 
 if [[ ! -f /etc/apt/sources.list.d/vscode.sources ]]; then
-    echo "Adding Microsoft GPG key and repo..."
+  echo "Adding Microsoft GPG key and repo..."
 
-    wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
-        | gpg --dearmor \
-        | sudo tee /usr/share/keyrings/microsoft.gpg > /dev/null
+  wget -qO- https://packages.microsoft.com/keys/microsoft.asc |
+    gpg --dearmor |
+    sudo tee /usr/share/keyrings/microsoft.gpg >/dev/null
 
-    cat <<EOF | sudo tee /etc/apt/sources.list.d/vscode.sources > /dev/null
+  cat <<EOF | sudo tee /etc/apt/sources.list.d/vscode.sources >/dev/null
 Types: deb
 URIs: https://packages.microsoft.com/repos/code
 Suites: stable
@@ -105,7 +107,7 @@ Signed-By: /usr/share/keyrings/microsoft.gpg
 EOF
 
 else
-    echo "VS Code repo already exists, skipping repo creation."
+  echo "VS Code repo already exists, skipping repo creation."
 fi
 
 wait_for_apt
@@ -115,14 +117,14 @@ sudo apt install -y code
 echo "==== Installing VS Code Extensions ===="
 
 EXTENSIONS=(
-    ms-vscode-remote.remote-containers
-    vscode-icons-team.vscode-icons
-    ms-vscode.resharper9-keybindings
+  ms-vscode-remote.remote-containers
+  vscode-icons-team.vscode-icons
+  ms-vscode.resharper9-keybindings
 )
 
 for ext in "${EXTENSIONS[@]}"; do
-    echo "Installing $ext ..."
-    sudo -u "$SUDO_USER" code --install-extension "$ext"
+  echo "Installing $ext ..."
+  sudo -u "$SUDO_USER" code --install-extension "$ext"
 done
 
 echo "VS Code extension install complete."
@@ -136,9 +138,9 @@ sudo apt remove -y docker docker.io containerd runc || true
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker.gpg
 
 echo \
-"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker.gpg] \
-https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" | \
-sudo tee /etc/apt/sources.list.d/docker.list
+  "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" |
+  sudo tee /etc/apt/sources.list.d/docker.list
 
 wait_for_apt
 sudo apt update
@@ -156,7 +158,7 @@ sudo tar -xzvf lazydocker.tar.gz -C /usr/local/bin lazydocker
 rm lazydocker.tar.gz
 
 if ! grep -q "alias lzd=" ~/.zshrc; then
-    echo "alias lzd='lazydocker'" >> ~/.zshrc
+  echo "alias lzd='lazydocker'" >>~/.zshrc
 fi
 
 ###########################################################
@@ -177,15 +179,21 @@ sudo tar -xzvf k9s.tar.gz -C /usr/local/bin k9s
 rm k9s.tar.gz
 
 ###########################################################
-# 9. Bottom (btm)
+# 9. Flux CLI (GitOps)
+###########################################################
+echo "==== Installing Flux CLI ===="
+curl -s https://fluxcd.io/install.sh | sudo bash
+
+###########################################################
+# 10. Bottom (btm)
 ###########################################################
 echo "==== Installing Bottom (btm) ===="
 
-BTM_DEB_URL=$(curl -s https://api.github.com/repos/ClementTsang/bottom/releases/latest \
-  | grep browser_download_url \
-  | grep "amd64.deb" \
-  | grep -v "musl" \
-  | cut -d '"' -f 4)
+BTM_DEB_URL=$(curl -s https://api.github.com/repos/ClementTsang/bottom/releases/latest |
+  grep browser_download_url |
+  grep "amd64.deb" |
+  grep -v "musl" |
+  cut -d '"' -f 4)
 
 echo "Downloading: $BTM_DEB_URL"
 curl -L -o bottom.deb "$BTM_DEB_URL"
@@ -195,21 +203,21 @@ sudo apt install -y ./bottom.deb
 rm bottom.deb
 
 ###########################################################
-# 10. Evolution
+# 11. Evolution
 ###########################################################
 echo "==== Installing Evolution ===="
 wait_for_apt
 sudo apt install -y evolution evolution-ews
 
 ###########################################################
-# 11. Git
+# 12. Git
 ###########################################################
 echo "==== Installing Git ===="
 wait_for_apt
 sudo apt install -y git
 
 ###########################################################
-# 12. GitKraken
+# 13. GitKraken
 ###########################################################
 echo "==== Installing GitKraken ===="
 
@@ -225,9 +233,8 @@ sudo apt install -y ./gitkraken.deb
 # Clean up
 rm gitkraken.deb
 
-
 ###########################################################
-# 13. DBeaver
+# 14. DBeaver
 ###########################################################
 echo "==== Installing DBeaver CE ===="
 wait_for_apt
@@ -236,21 +243,21 @@ sudo apt install -y ./dbeaver.deb
 rm dbeaver.deb
 
 ###########################################################
-# 14. Remmina (RDP/VNC client)
+# 15. Remmina (RDP/VNC client)
 ###########################################################
 echo "==== Installing Remmina ===="
 wait_for_apt
 sudo apt install -y remmina remmina-plugin-rdp remmina-plugin-vnc
 
 ###########################################################
-# 15. Azure CLI
+# 16. Azure CLI
 ###########################################################
 echo "==== Installing Azure CLI ===="
 wait_for_apt
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
 ###########################################################
-# 16. Copilot CLI & Copilot Terminal
+# 17. Copilot CLI & Copilot Terminal
 ###########################################################
 echo "==== Installing Node.js + npm (for Copilot CLI) ===="
 wait_for_apt
@@ -262,7 +269,7 @@ sudo npm install -g @github/copilot
 
 export PATH="$PATH:$(npm bin -g)"
 
-if ! command -v copilot &> /dev/null; then
+if ! command -v copilot &>/dev/null; then
   echo "ERROR: Copilot CLI not found in PATH"
   exit 1
 fi
@@ -275,9 +282,9 @@ curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo 
 sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
 
 echo \
-"deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] \
-https://cli.github.com/packages stable main" | \
-sudo tee /etc/apt/sources.list.d/github-cli.list
+  "deb [signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] \
+https://cli.github.com/packages stable main" |
+  sudo tee /etc/apt/sources.list.d/github-cli.list
 
 sudo apt update
 sudo apt install -y gh
