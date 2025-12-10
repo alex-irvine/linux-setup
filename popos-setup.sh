@@ -85,6 +85,10 @@ wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.de
 sudo apt install -y ./google-chrome-stable_current_amd64.deb
 rm google-chrome-stable_current_amd64.deb
 
+if ! grep -q "alias chrome=" ~/.zshrc; then
+  echo "alias chrome='nohup google-chrome --disable-gpu-compositing > /dev/null 2>&1 & disown'" >>~/.zshrc
+fi
+
 ###########################################################
 # 4. VS Code
 ###########################################################
