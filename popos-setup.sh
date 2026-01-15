@@ -21,6 +21,7 @@ wait_for_apt
 sudo apt install -y curl wget gnupg ca-certificates apt-transport-https software-properties-common
 
 echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 
 ###########################################################
 # 1. Neovim + LazyVim
