@@ -24,7 +24,7 @@ echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo s
 echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 
 ###########################################################
-# 1. Neovim + LazyVim
+# Neovim + LazyVim
 ###########################################################
 echo "==== Installing Neovim ===="
 wait_for_apt
@@ -60,7 +60,7 @@ echo ""
 echo "IMPORTANT: Set your terminal font to 'JetBrainsMono Nerd Font' in terminal preferences."
 
 ###########################################################
-# 2. ZSH + Oh My Zsh (and make default)
+# ZSH + Oh My Zsh (and make default)
 ###########################################################
 echo "==== Installing Zsh ===="
 wait_for_apt
@@ -78,7 +78,7 @@ if [ ! -d "$HOME/.oh-my-zsh" ]; then
 fi
 
 ###########################################################
-# 3. Chrome
+# Chrome
 ###########################################################
 echo "==== Installing Google Chrome ===="
 wait_for_apt
@@ -91,7 +91,7 @@ if ! grep -q "alias chrome=" ~/.zshrc; then
 fi
 
 ###########################################################
-# 4. VS Code
+# VS Code
 ###########################################################
 echo "==== Installing VS Code ===="
 
@@ -135,7 +135,7 @@ done
 echo "VS Code extension install complete."
 
 ###########################################################
-# 5. Docker
+# Docker
 ###########################################################
 echo "==== Installing Docker ===="
 sudo apt remove -y docker docker.io containerd runc || true
@@ -154,7 +154,7 @@ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin d
 sudo usermod -aG docker $USER
 
 ###########################################################
-# 6. Lazydocker + alias lzd
+# Lazydocker + alias lzd
 ###########################################################
 echo "==== Installing Lazydocker ===="
 LAZYDOCKER_VERSION=$(curl -s https://api.github.com/repos/jesseduffield/lazydocker/releases/latest | grep tag_name | cut -d '"' -f4)
@@ -167,7 +167,7 @@ if ! grep -q "alias lzd=" ~/.zshrc; then
 fi
 
 ###########################################################
-# 7. kubectl (Kubernetes CLI)
+# kubectl (Kubernetes CLI)
 ###########################################################
 echo "==== Installing kubectl ===="
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
@@ -175,7 +175,7 @@ sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 rm kubectl
 
 ###########################################################
-# 8. k9s (Kubernetes CLI UI)
+# k9s (Kubernetes CLI UI)
 ###########################################################
 echo "==== Installing k9s ===="
 K9S_VERSION=$(curl -s https://api.github.com/repos/derailed/k9s/releases/latest | grep tag_name | cut -d '"' -f4)
@@ -184,13 +184,13 @@ sudo tar -xzvf k9s.tar.gz -C /usr/local/bin k9s
 rm k9s.tar.gz
 
 ###########################################################
-# 9. Flux CLI (GitOps)
+# Flux CLI (GitOps)
 ###########################################################
 echo "==== Installing Flux CLI ===="
 curl -s https://fluxcd.io/install.sh | sudo bash
 
 ###########################################################
-# 10. Bottom (btm)
+# Bottom (btm)
 ###########################################################
 echo "==== Installing Bottom (btm) ===="
 
@@ -208,21 +208,37 @@ sudo apt install -y ./bottom.deb
 rm bottom.deb
 
 ###########################################################
-# 11. Evolution
+# Evolution
 ###########################################################
 echo "==== Installing Evolution ===="
 wait_for_apt
 sudo apt install -y evolution evolution-ews
 
 ###########################################################
-# 12. Git
+# Git
 ###########################################################
 echo "==== Installing Git ===="
 wait_for_apt
 sudo apt install -y git
 
+wait_for_apt
+sudo apt install -y gh
+
 ###########################################################
-# 13. GitKraken
+# LazyGit (lzg)
+###########################################################
+echo "==== Installing Lazy Git ===="
+LALAZYGIT_VERSION=$(curl -s "https://api.github.com/repos/jesseduffield/lazygit/releases/latest" | \grep -Po '"tag_name": *"v\K[^"]*')
+curl -Lo lazygit.tar.gz "https://github.com/jesseduffield/lazygit/releases/download/v${LAZYGIT_VERSION}/lazygit_${LAZYGIT_VERSION}_Linux_x86_64.tar.gz"
+tar xf lazygit.tar.gz lazygit
+sudo install lazygit -D -t /usr/local/bin/
+
+if ! grep -q "alias lzg=" ~/.zshrc; then
+  echo "alias lzg='lazygit'" >>~/.zshrc
+fi
+
+###########################################################
+# GitKraken
 ###########################################################
 echo "==== Installing GitKraken ===="
 
@@ -239,7 +255,7 @@ sudo apt install -y ./gitkraken.deb
 rm gitkraken.deb
 
 ###########################################################
-# 14. DBeaver
+# DBeaver
 ###########################################################
 echo "==== Installing DBeaver CE ===="
 wait_for_apt
@@ -248,21 +264,21 @@ sudo apt install -y ./dbeaver.deb
 rm dbeaver.deb
 
 ###########################################################
-# 15. Remmina (RDP/VNC client)
+# Remmina (RDP/VNC client)
 ###########################################################
 echo "==== Installing Remmina ===="
 wait_for_apt
 sudo apt install -y remmina remmina-plugin-rdp remmina-plugin-vnc
 
 ###########################################################
-# 16. Azure CLI
+# Azure CLI
 ###########################################################
 echo "==== Installing Azure CLI ===="
 wait_for_apt
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
 ###########################################################
-# 17. Copilot CLI & Copilot Terminal
+# Copilot CLI & Copilot Terminal
 ###########################################################
 echo "==== Installing Node.js + npm (for Copilot CLI) ===="
 wait_for_apt
@@ -291,10 +307,8 @@ echo \
 https://cli.github.com/packages stable main" |
   sudo tee /etc/apt/sources.list.d/github-cli.list
 
-sudo apt update
-sudo apt install -y gh
-
 echo "==== Setup complete! ===="
 echo ""
 echo "For suspend/lid-close configuration, run: ~/Proj/linux-setup/fix-suspend.sh"
 echo "Restart required for Docker group changes to take effect."
+echo "Run $(gh auth login) to login to github and git"
