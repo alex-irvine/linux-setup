@@ -30,13 +30,47 @@ echo "==== Installing Neovim ===="
 wait_for_apt
 sudo apt install -y neovim
 
-echo "==== Installing Nerd Font (JetBrains Mono) ===="
+echo "==== Installing Nerd Fonts ===="
+mkdir -p ~/.local/share/fonts
+
+# JetBrains Mono Nerd Font (optional - for terminal font)
 JBM_TEMP="/tmp/JetBrainsMono.zip"
-curl -fLo "$JBM_TEMP" https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip
+curl -fLo "$JBM_TEMP" https://github.com/ryanoasis/nerd-fonts/releases/download/v3.3.0/JetBrainsMono.zip
 mkdir -p ~/.local/share/fonts/JetBrainsMono
 unzip -o "$JBM_TEMP" -d ~/.local/share/fonts/JetBrainsMono
 rm "$JBM_TEMP"
+
+# Nerd Font Symbols Only (required for icon fallback)
+NFS_TEMP="/tmp/NerdFontsSymbolsOnly.zip"
+curl -fLo "$NFS_TEMP" https://github.com/ryanoasis/nerd-fonts/releases/download/v3.3.0/NerdFontsSymbolsOnly.zip
+unzip -o "$NFS_TEMP" -d ~/.local/share/fonts
+rm "$NFS_TEMP"
+
 fc-cache -fv
+
+# Fontconfig: prioritize Nerd Font symbols over CJK fonts
+# (prevents icons from rendering as kanji characters)
+echo "==== Configuring fontconfig for Nerd Font icons ===="
+mkdir -p ~/.config/fontconfig
+cat > ~/.config/fontconfig/fonts.conf << 'FONTCONF'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <!-- Prepend Nerd Font symbols to all font fallback chains -->
+  <match target="pattern">
+    <edit name="family" mode="prepend">
+      <string>Symbols Nerd Font</string>
+    </edit>
+  </match>
+
+  <!-- Reject CJK fonts for Private Use Area codepoints used by Nerd Fonts -->
+  <selectfont>
+    <rejectfont>
+      <glob>*CJK*</glob>
+    </rejectfont>
+  </selectfont>
+</fontconfig>
+FONTCONF
 
 echo "==== Installing LazyVim ===="
 if [ -d "$HOME/.config/nvim" ]; then
