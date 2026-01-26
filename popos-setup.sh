@@ -18,10 +18,19 @@ sudo apt update && sudo apt upgrade -y
 
 echo "==== Installing required tools ===="
 wait_for_apt
-sudo apt install -y curl wget gnupg ca-certificates apt-transport-https software-properties-common
+sudo apt install -y curl wget gnupg ca-certificates apt-transport-https software-properties-common build-essential unzip clang libclang-dev pkg-config
 
 echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+
+###########################################################
+# Node.js + npm
+# Required by Mason (nvim) for LSP servers
+###########################################################
+echo "==== Installing Node.js + npm ===="
+wait_for_apt
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
 
 ###########################################################
 # Neovim + LazyVim
@@ -52,7 +61,7 @@ fc-cache -fv
 # (prevents icons from rendering as kanji characters)
 echo "==== Configuring fontconfig for Nerd Font icons ===="
 mkdir -p ~/.config/fontconfig
-cat > ~/.config/fontconfig/fonts.conf << 'FONTCONF'
+cat >~/.config/fontconfig/fonts.conf <<'FONTCONF'
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
 <fontconfig>
@@ -90,8 +99,20 @@ fi
 git clone https://github.com/LazyVim/starter ~/.config/nvim
 rm -rf ~/.config/nvim/.git
 
-echo ""
-echo "IMPORTANT: Set your terminal font to 'JetBrainsMono Nerd Font' in terminal preferences."
+# tree-sitter-cli is needed to compile treesitter parsers
+# Mason's binary requires newer glibc than Pop!_OS has, so build from source with Rust
+# Install Rust if missing and add cargo bin to PATH now and for future shells
+echo "==== Installing tree-sitter-cli (via Rust) ===="
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "Installing Rust (rustup)"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  source "$HOME/.cargo/env"
+fi
+if ! grep -q '\.cargo/env' "$HOME/.zshrc"; then
+  echo '. "$HOME/.cargo/env"' >>"$HOME/.zshrc"
+fi
+# Build tree-sitter-cli from source to avoid glibc version issues
+cargo install tree-sitter-cli || true
 
 ###########################################################
 # ZSH + Oh My Zsh (and make default)
@@ -317,13 +338,8 @@ wait_for_apt
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
 ###########################################################
-# Copilot CLI & Copilot Terminal
+# GitHub Copilot CLI
 ###########################################################
-echo "==== Installing Node.js + npm (for Copilot CLI) ===="
-wait_for_apt
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-
 echo "==== Installing GitHub Copilot CLI ===="
 sudo npm install -g @github/copilot
 
