@@ -33,11 +33,32 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs
 
 ###########################################################
-# Neovim + LazyVim
-###########################################################
+# Neovim
+# Install from official release tarball
+# ###########################################################
 echo "==== Installing Neovim ===="
+
+# Remove apt Neovim to avoid version conflicts
 wait_for_apt
-sudo apt install -y neovim
+sudo apt remove -y neovim || true
+
+# Download & install latest release build
+TMP_DIR="/tmp/nvim-install"
+NVIM_TARBALL_URL="https://github.com/neovim/neovim-releases/releases/latest/download/nvim-linux-x86_64.tar.gz"
+
+rm -rf "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+curl -L -o "$TMP_DIR/nvim-linux-x86_64.tar.gz" "$NVIM_TARBALL_URL"
+
+sudo rm -rf /opt/nvim
+sudo mkdir -p /opt/nvim
+sudo tar -xzf "$TMP_DIR/nvim-linux-x86_64.tar.gz" -C /opt/nvim --strip-components=1
+sudo ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim
+
+rm -rf "$TMP_DIR"
+
+echo "Neovim version now:"
+nvim --version | head -n 2
 
 echo "==== Installing Nerd Fonts ===="
 mkdir -p ~/.local/share/fonts
