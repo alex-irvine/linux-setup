@@ -60,6 +60,32 @@ rm -rf "$TMP_DIR"
 echo "Neovim version now:"
 nvim --version | head -n 2
 
+# Create neo-tree config to show hidden apart from .git
+NVIM_CONFIG_DIR="${HOME}/.config/nvim/lua/plugins"
+mkdir -p "$NVIM_CONFIG_DIR"
+
+cat >"$NVIM_CONFIG_DIR/neo-tree.lua" <<'NEOTREE'
+return {
+  "nvim-neo-tree/neo-tree.nvim",
+  opts = {
+    filesystem = {
+      filtered_items = {
+        visible = true,
+        hide_dotfiles = false,
+        hide_gitignored = false,
+        hide_by_name = {},
+        never_show = {
+          ".git",
+          ".DS_Store",
+        },
+      },
+    },
+  },
+}
+NEOTREE
+
+echo "✅ Neo-tree config created at ${NVIM_CONFIG_DIR}/neo-tree.lua"
+
 echo "==== Installing Nerd Fonts ===="
 mkdir -p ~/.local/share/fonts
 
