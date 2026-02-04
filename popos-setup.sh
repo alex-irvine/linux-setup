@@ -102,23 +102,13 @@ cat >~/.config/fontconfig/fonts.conf <<'FONTCONF'
 </fontconfig>
 FONTCONF
 
-echo "==== Installing LazyVim ===="
-if [ -d "$HOME/.config/nvim" ]; then
-  echo "Backing up existing nvim config..."
-  mv ~/.config/nvim ~/.config/nvim.backup-$(date +%Y%m%d-%H%M%S)
-fi
-if [ -d "$HOME/.local/share/nvim" ]; then
-  mv ~/.local/share/nvim ~/.local/share/nvim.backup-$(date +%Y%m%d-%H%M%S)
-fi
-if [ -d "$HOME/.local/state/nvim" ]; then
-  mv ~/.local/state/nvim ~/.local/state/nvim.backup-$(date +%Y%m%d-%H%M%S)
-fi
-if [ -d "$HOME/.cache/nvim" ]; then
-  mv ~/.cache/nvim ~/.cache/nvim.backup-$(date +%Y%m%d-%H%M%S)
-fi
+# Clone nvim config
+echo "📥 Cloning nvim configuration..."
+git clone https://github.com/alex-irvine/nvim-config.git ~/.config/nvim
 
-git clone https://github.com/LazyVim/starter ~/.config/nvim
-rm -rf ~/.config/nvim/.git
+echo "✅ Neovim config installed"
+echo "   Plugins, LSPs, formatters, and linters will auto-install on first launch"
+echo "   Run 'nvim' to start the installation"
 
 # tree-sitter-cli is needed to compile treesitter parsers
 # Mason's binary requires newer glibc than Pop!_OS has, so build from source with Rust
@@ -134,45 +124,6 @@ if ! grep -q '\.cargo/env' "$HOME/.zshrc"; then
 fi
 # Build tree-sitter-cli from source to avoid glibc version issues
 cargo install tree-sitter-cli || true
-
-# Setup LazyVim with auto-installing LSPs
-echo "📦 Configuring LazyVim LSP auto-install..."
-mkdir -p "$HOME/.config/nvim/lua/plugins"
-
-cat >"$HOME/.config/nvim/lua/plugins/mason.lua" <<'EOF'
-return {
-  {
-    "williamboman/mason.nvim",
-    opts = {
-      ui = {
-        icons = {
-          package_installed = "✓",
-          package_pending = "➜",
-          package_uninstalled = "✗"
-        }
-      }
-    },
-  },
-  {
-    "williamboman/mason-lspconfig.nvim",
-    opts = {
-      ensure_installed = {
-        "ts_ls",           -- TypeScript/JavaScript/React
-        "omnisharp",       -- C#
-        "gopls",           -- Go
-        "jsonls",          -- JSON
-        "yamlls",          -- YAML
-        "marksman",        -- Markdown
-        "lemminx",         -- XML
-        "lua_ls",          -- Lua
-      },
-      automatic_installation = true,
-    },
-  },
-}
-EOF
-
-echo "✅ LazyVim LSP auto-install configured"
 
 ###########################################################
 # ZSH + Oh My Zsh (and make default)
