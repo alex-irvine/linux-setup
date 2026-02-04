@@ -135,6 +135,45 @@ fi
 # Build tree-sitter-cli from source to avoid glibc version issues
 cargo install tree-sitter-cli || true
 
+# Setup LazyVim with auto-installing LSPs
+echo "📦 Configuring LazyVim LSP auto-install..."
+mkdir -p "$HOME/.config/nvim/lua/plugins"
+
+cat >"$HOME/.config/nvim/lua/plugins/mason.lua" <<'EOF'
+return {
+  {
+    "williamboman/mason.nvim",
+    opts = {
+      ui = {
+        icons = {
+          package_installed = "✓",
+          package_pending = "➜",
+          package_uninstalled = "✗"
+        }
+      }
+    },
+  },
+  {
+    "williamboman/mason-lspconfig.nvim",
+    opts = {
+      ensure_installed = {
+        "ts_ls",           -- TypeScript/JavaScript/React
+        "omnisharp",       -- C#
+        "gopls",           -- Go
+        "jsonls",          -- JSON
+        "yamlls",          -- YAML
+        "marksman",        -- Markdown
+        "lemminx",         -- XML
+        "lua_ls",          -- Lua
+      },
+      automatic_installation = true,
+    },
+  },
+}
+EOF
+
+echo "✅ LazyVim LSP auto-install configured"
+
 ###########################################################
 # ZSH + Oh My Zsh (and make default)
 ###########################################################
