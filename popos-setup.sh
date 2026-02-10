@@ -309,23 +309,6 @@ fi
 sudo apt-get install tig
 
 ###########################################################
-# GitKraken
-###########################################################
-echo "==== Installing GitKraken ===="
-
-# Download the latest .deb directly from official site
-GK_DEB_URL="https://release.gitkraken.com/linux/gitkraken-amd64.deb"
-
-curl -L -o gitkraken.deb "$GK_DEB_URL"
-
-# Install
-wait_for_apt
-sudo apt install -y ./gitkraken.deb
-
-# Clean up
-rm gitkraken.deb
-
-###########################################################
 # DBeaver
 ###########################################################
 echo "==== Installing DBeaver CE ===="
