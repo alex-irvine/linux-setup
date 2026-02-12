@@ -204,20 +204,30 @@ echo "VS Code extension install complete."
 # Docker
 ###########################################################
 echo "==== Installing Docker ===="
-sudo apt remove -y docker docker.io containerd runc || true
+# Remove conflicting packages
+sudo apt remove $(dpkg --get-selections docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc | cut -f1)
 
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker.gpg
+# Add Docker's official GPG key:
+sudo apt update
+sudo apt install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker.gpg] \
-https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" |
-  sudo tee /etc/apt/sources.list.d/docker.list
+# Add the repository to Apt sources:
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 wait_for_apt
 sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-sudo usermod -aG docker $USER
+# Add the user to the docker usergroup to allow daemon permission
+sudo usermod -aG docker "$USER"
 
 ###########################################################
 # Lazydocker + alias lzd
@@ -254,6 +264,11 @@ rm k9s.tar.gz
 ###########################################################
 echo "==== Installing Flux CLI ===="
 curl -s https://fluxcd.io/install.sh | sudo bash
+
+# FLux k9s plugin
+echo "==== Installing Flux k9s Plugin ===="
+mkdir ~/.config/k9s/plugins/
+curl https://raw.githubusercontent.com/derailed/k9s/refs/heads/master/plugins/flux.yaml -o ~/.config/k9s/plugins/flux.yaml
 
 ###########################################################
 # Bottom (btm)
