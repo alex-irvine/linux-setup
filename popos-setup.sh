@@ -103,8 +103,10 @@ cat >~/.config/fontconfig/fonts.conf <<'FONTCONF'
 FONTCONF
 
 # Clone nvim config
-echo "📥 Cloning nvim configuration..."
-git clone https://github.com/alex-irvine/nvim-config.git ~/.config/nvim
+if [ ! -d ~/.config/nvim ]; then
+  echo "📥 Cloning nvim configuration..."
+  git clone https://github.com/alex-irvine/nvim-config.git ~/.config/nvim
+fi
 
 echo "✅ Neovim config installed"
 echo "   Plugins, LSPs, formatters, and linters will auto-install on first launch"
