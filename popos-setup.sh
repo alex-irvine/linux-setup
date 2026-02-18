@@ -253,6 +253,15 @@ sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 rm kubectl
 
 ###########################################################
+# helm
+###########################################################
+echo "==== Installing helm ===="
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
+chmod 700 get_helm.sh
+./get_helm.sh
+rm get_helm.sh
+
+###########################################################
 # k9s (Kubernetes CLI UI)
 ###########################################################
 echo "==== Installing k9s ===="
