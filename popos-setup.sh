@@ -24,6 +24,14 @@ echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo s
 echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 
 ###########################################################
+# Golang (handy terminal utilities and dev env)
+###########################################################
+echo "==== Installing golang ===="
+sudo add-apt-repository ppa:longsleep/golang-backports
+sudo apt update
+sudo apt install golang-go
+
+###########################################################
 # Node.js + npm
 # Required by Mason (nvim) for LSP servers
 ###########################################################
