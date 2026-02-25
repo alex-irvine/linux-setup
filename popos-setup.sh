@@ -242,7 +242,7 @@ curl -s https://fluxcd.io/install.sh | sudo bash
 
 # FLux k9s plugin
 echo "==== Installing Flux k9s Plugin ===="
-mkdir ~/.config/k9s/plugins/
+mkdir -p ~/.config/k9s/plugins/
 curl https://raw.githubusercontent.com/derailed/k9s/refs/heads/master/plugins/flux.yaml -o ~/.config/k9s/plugins/flux.yaml
 
 ###########################################################
