@@ -153,6 +153,10 @@ if [ ! -d "$HOME/.oh-my-zsh" ]; then
     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 fi
 
+# Set nvim as default editor for k9s, lazygit, etc.
+echo "export EDITOR='nvim'" >>~/.zshrc
+echo "export VISUAL='nvim'" >>~/.zshrc
+
 ###########################################################
 # Chrome
 ###########################################################
