@@ -157,6 +157,10 @@ fi
 echo "export EDITOR='nvim'" >>~/.zshrc
 echo "export VISUAL='nvim'" >>~/.zshrc
 
+# Install tmux (terminal multiplexer)
+source ~/.zshrc
+sudo snap install tmux --classic
+
 ###########################################################
 # Chrome
 ###########################################################
