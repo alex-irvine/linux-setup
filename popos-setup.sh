@@ -157,9 +157,15 @@ fi
 echo "export EDITOR='nvim'" >>~/.zshrc
 echo "export VISUAL='nvim'" >>~/.zshrc
 
-# Install tmux (terminal multiplexer)
-source ~/.zshrc
+###########################################################
+# Install tmux and tmuxinator and sync projects
+###########################################################
 sudo snap install tmux --classic
+sudo apt-get install ruby-full
+gem install tmuxinator
+
+echo "📥 Cloning tmuxinator projects..."
+git clone https://github.com/alex-irvine/tmuxinator.git ~/.config/tmuxinator
 
 ###########################################################
 # Chrome
