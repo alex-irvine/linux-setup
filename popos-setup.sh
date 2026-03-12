@@ -360,6 +360,57 @@ echo \
 https://cli.github.com/packages stable main" |
   sudo tee /etc/apt/sources.list.d/github-cli.list
 
+###########################################################
+# Gonzo (log viewer)
+###########################################################
+echo "==== Installing Gonzo ===="
+go install github.com/control-theory/gonzo/cmd/gonzo@latest
+
+echo "==== Configuring Gonzo for Serilog ===="
+mkdir -p ~/.config/gonzo/formats
+cat >~/.config/gonzo/formats/serilog.yaml <<'EOF'
+name: serilog
+description: Serilog compact JSON format
+type: json
+
+mapping:
+  timestamp:
+    field: "@t"
+    time_format: "2006-01-02T15:04:05.9999999Z07:00"
+  
+  severity:
+    field: "@l"
+    default: "INFO"
+  
+  body:
+    field: "@m"
+  
+  auto_map_remaining: true
+EOF
+
+cat >~/.config/gonzo/formats/serilog-console.yaml <<'EOF'
+name: serilog-console
+description: Serilog console output with JSON properties
+type: text
+
+pattern:
+  use_regex: true
+  main: '^\s*\[(?P<timestamp>\d{2}:\d{2}:\d{2})\s+(?P<level>\w+)\]\s+(?P<message>.*?)(?:\s+(\{.*\}))?$'
+
+mapping:
+  timestamp:
+    field: timestamp
+    time_format: "15:04:05"
+  
+  severity:
+    field: level
+    transform: uppercase
+    default: "INFO"
+  
+  body:
+    field: message
+EOF
+
 echo "==== Setup complete! ===="
 echo ""
 echo "For suspend/lid-close configuration, run: ~/Proj/linux-setup/fix-suspend.sh"
