@@ -167,6 +167,29 @@ gem install tmuxinator
 echo "📥 Cloning tmuxinator projects..."
 git clone https://github.com/alex-irvine/tmuxinator.git ~/.config/tmuxinator
 
+echo "📥 Installing tmux plugin manager (tpm)..."
+if [ ! -d ~/.tmux/plugins/tpm ]; then
+  git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+fi
+
+echo "📥 Installing tmux-yank plugin..."
+if [ ! -d ~/.tmux/plugins/tmux-yank ]; then
+  git clone https://github.com/tmux-plugins/tmux-yank ~/.tmux/plugins/tmux-yank
+fi
+
+echo "📝 Creating tmux configuration with plugins..."
+cat >~/.tmux.conf <<'TMUXCONF'
+# List of plugins
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'tmux-plugins/tmux-yank'
+
+# Initialize TMUX plugin manager (keep this line at the very bottom of tmux.conf)
+run '~/.tmux/plugins/tpm/tpm'
+TMUXCONF
+
+echo "✅ Tmux plugins installed"
+echo "   Press prefix + I (capital i) in tmux to install plugins"
+
 ###########################################################
 # Chrome
 ###########################################################
