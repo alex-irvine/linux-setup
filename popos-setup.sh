@@ -389,6 +389,25 @@ https://cli.github.com/packages stable main" |
 echo "==== Installing Gonzo ===="
 go install github.com/control-theory/gonzo/cmd/gonzo@latest
 
+###########################################################
+# logcli (Grafana Loki CLI)
+###########################################################
+echo "==== Installing logcli ===="
+LOGCLI_VERSION=$(curl -s https://api.github.com/repos/grafana/loki/releases/latest | grep '"tag_name"' | cut -d '"' -f4)
+mkdir -p ~/.local/bin
+curl -L "https://github.com/grafana/loki/releases/download/${LOGCLI_VERSION}/logcli-linux-amd64.zip" -o /tmp/logcli-linux-amd64.zip
+unzip -o /tmp/logcli-linux-amd64.zip -d /tmp
+chmod +x /tmp/logcli-linux-amd64
+mv /tmp/logcli-linux-amd64 ~/.local/bin/logcli
+rm /tmp/logcli-linux-amd64.zip
+
+# Add logcli zsh autocompletion
+if ! grep -q "logcli completion zsh" ~/.zshrc; then
+  echo "" >>~/.zshrc
+  echo "# logcli autocompletion" >>~/.zshrc
+  echo 'eval "$(logcli --completion-script-zsh)"' >>~/.zshrc
+fi
+
 echo "==== Configuring Gonzo for Serilog ===="
 mkdir -p ~/.config/gonzo/formats
 cat >~/.config/gonzo/formats/serilog.yaml <<'EOF'
