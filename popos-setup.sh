@@ -179,6 +179,10 @@ fi
 
 echo "📝 Creating tmux configuration with plugins..."
 cat >~/.tmux.conf <<'TMUXCONF'
+# Fix Home and End keys in nvim
+bind-key -n Home send Escape "OH"
+bind-key -n End send Escape "OF"
+
 # List of plugins
 set -g @plugin 'tmux-plugins/tpm'
 set -g @plugin 'tmux-plugins/tmux-yank'
@@ -384,6 +388,12 @@ https://cli.github.com/packages stable main" |
   sudo tee /etc/apt/sources.list.d/github-cli.list
 
 ###########################################################
+# Claude code
+###########################################################
+echo "==== Installing Claude Code ===="
+curl -fsSL https://claude.ai/install.sh | bash
+
+###########################################################
 # Gonzo (log viewer)
 ###########################################################
 echo "==== Installing Gonzo ===="
@@ -412,7 +422,7 @@ echo "==== Configuring Gonzo for Serilog ===="
 mkdir -p ~/.config/gonzo/formats
 cat >~/.config/gonzo/formats/serilog.yaml <<'EOF'
 name: serilog
-description: Serilog compact JSON format
+description: Serilog compact JSON format (RenderedCompactJsonFormatter)
 type: json
 
 mapping:
@@ -426,6 +436,9 @@ mapping:
   
   body:
     field: "@m"
+  
+  exception:
+    field: "@x"
   
   auto_map_remaining: true
 EOF
