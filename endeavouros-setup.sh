@@ -88,9 +88,11 @@ cat >~/.config/fontconfig/fonts.conf <<'FONTCONF'
 </fontconfig>
 FONTCONF
 
-if [ ! -d ~/.config/nvim ]; then
-  echo "Cloning nvim configuration..."
+if [ ! -d ~/.config/nvim/.git ]; then
+  rm -rf ~/.config/nvim
   git clone https://github.com/alex-irvine/nvim-config.git ~/.config/nvim
+else
+  git -C ~/.config/nvim pull
 fi
 
 echo "==== Installing tree-sitter-cli (via Rust) ===="
@@ -122,8 +124,10 @@ if [ ! -d "$HOME/.oh-my-zsh" ]; then
     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 fi
 
-echo "export EDITOR='nvim'" >>~/.zshrc
-echo "export VISUAL='nvim'" >>~/.zshrc
+if ! grep -q "EDITOR" ~/.zshrc; then
+  echo "export EDITOR='nvim'" >>~/.zshrc
+  echo "export VISUAL='nvim'" >>~/.zshrc
+fi
 
 ###########################################################
 # tmux + tmuxinator
@@ -134,7 +138,12 @@ sudo pacman -S --noconfirm --needed tmux ruby
 gem install tmuxinator
 
 echo "Cloning tmuxinator projects..."
-git clone https://github.com/alex-irvine/tmuxinator.git ~/.config/tmuxinator
+if [ ! -d ~/.config/tmuxinator/.git ]; then
+  rm -rf ~/.config/tmuxinator
+  git clone https://github.com/alex-irvine/tmuxinator.git ~/.config/tmuxinator
+else
+  git -C ~/.config/tmuxinator pull
+fi
 
 echo "Installing tmux plugin manager (tpm)..."
 if [ ! -d ~/.tmux/plugins/tpm ]; then
@@ -279,8 +288,11 @@ sudo npm install -g @github/copilot
 ###########################################################
 echo "==== Installing Claude Code ===="
 # Clone dotfiles before installing so Claude Code picks up existing config
-if [ ! -d ~/.claude ]; then
+if [ ! -d ~/.claude/.git ]; then
+  rm -rf ~/.claude
   git clone https://github.com/alex-irvine/claude-config.git ~/.claude
+else
+  git -C ~/.claude pull
 fi
 curl -fsSL https://claude.ai/install.sh | bash
 
