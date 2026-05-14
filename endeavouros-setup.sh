@@ -18,7 +18,32 @@ echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo s
 sudo pacman -S --noconfirm --needed \
   sway waybar wofi kitty mako swaylock xorg-xwayland \
   wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
-  bluez bluez-utils network-manager-applet
+  bluez bluez-utils network-manager-applet pulsemixer
+
+###########################################################
+# Desktop dotfiles (sway / mako / kitty)
+###########################################################
+echo "==== Cloning desktop dotfiles ===="
+if [ ! -d ~/.config/sway/.git ]; then
+  rm -rf ~/.config/sway
+  git clone https://github.com/alex-irvine/sway-config.git ~/.config/sway
+else
+  git -C ~/.config/sway pull
+fi
+
+if [ ! -d ~/.config/mako/.git ]; then
+  rm -rf ~/.config/mako
+  git clone https://github.com/alex-irvine/mako-config.git ~/.config/mako
+else
+  git -C ~/.config/mako pull
+fi
+
+if [ ! -d ~/.config/kitty/.git ]; then
+  rm -rf ~/.config/kitty
+  git clone https://github.com/alex-irvine/kitty-config.git ~/.config/kitty
+else
+  git -C ~/.config/kitty pull
+fi
 
 ###########################################################
 # yay (AUR helper)
@@ -31,6 +56,13 @@ if ! command -v yay >/dev/null 2>&1; then
   (cd "$TMP_YAY" && makepkg -si --noconfirm)
   rm -rf "$TMP_YAY"
 fi
+
+
+###########################################################
+# yay utils
+###########################################################
+echo "==== Installing yay utils ===="
+yay -S bluetuith
 
 ###########################################################
 # Golang
@@ -124,6 +156,17 @@ if [ ! -d "$HOME/.oh-my-zsh" ]; then
     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 fi
 
+# Source oh-my-zsh with the robbyrussell theme (cwd + git branch + dirty marker).
+# KEEP_ZSHRC=yes above means the OMZ installer didn't touch ~/.zshrc, so wire it up here.
+if ! grep -q 'oh-my-zsh.sh' ~/.zshrc; then
+  cat >>~/.zshrc <<'OMZ'
+
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="robbyrussell"
+source "$ZSH/oh-my-zsh.sh"
+OMZ
+fi
+
 if ! grep -q "EDITOR" ~/.zshrc; then
   echo "export EDITOR='nvim'" >>~/.zshrc
   echo "export VISUAL='nvim'" >>~/.zshrc
@@ -133,9 +176,23 @@ fi
 # tmux + tmuxinator
 ###########################################################
 echo "==== Installing tmux ===="
-sudo pacman -S --noconfirm --needed tmux ruby
+sudo pacman -S --noconfirm --needed tmux ruby ruby-erb
 
-gem install tmuxinator
+gem install --user-install tmuxinator
+
+# tmuxinator installs into the user gem bindir (e.g. ~/.local/share/gem/ruby/3.4.0/bin),
+# which isn't on PATH by default. Add it, and define the conventional `mux` alias.
+if ! grep -q 'Gem.user_dir' ~/.zshrc; then
+  cat >>~/.zshrc <<'GEMPATH'
+
+if command -v ruby >/dev/null 2>&1; then
+  export PATH="$(ruby -e 'puts Gem.user_dir')/bin:$PATH"
+fi
+GEMPATH
+fi
+if ! grep -q "alias mux=" ~/.zshrc; then
+  echo "alias mux='tmuxinator'" >>~/.zshrc
+fi
 
 echo "Cloning tmuxinator projects..."
 if [ ! -d ~/.config/tmuxinator/.git ]; then
@@ -284,23 +341,10 @@ echo "==== Installing GitHub Copilot CLI ===="
 sudo npm install -g @github/copilot
 
 ###########################################################
-# Claude Code + dotfiles
-###########################################################
-echo "==== Installing Claude Code ===="
-# Clone dotfiles before installing so Claude Code picks up existing config
-if [ ! -d ~/.claude/.git ]; then
-  rm -rf ~/.claude
-  git clone https://github.com/alex-irvine/claude-config.git ~/.claude
-else
-  git -C ~/.claude pull
-fi
-curl -fsSL https://claude.ai/install.sh | bash
-
-###########################################################
 # Gonzo (log viewer)
 ###########################################################
 echo "==== Installing Gonzo ===="
-go install github.com/control-theory/gonzo/cmd/gonzo@latest
+go install github.com/control-theory/gonzo/cmd/gonzo@v0.3.2
 
 ###########################################################
 # logcli (Grafana Loki CLI)
