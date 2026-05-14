@@ -15,6 +15,11 @@ sudo pacman -S --noconfirm --needed \
 echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 
+sudo pacman -S --noconfirm --needed \
+  sway waybar wofi kitty mako swaylock xorg-xwayland \
+  wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
+  bluez bluez-utils network-manager-applet
+
 ###########################################################
 # yay (AUR helper)
 ###########################################################
@@ -398,6 +403,8 @@ fi
 if ! grep -q "alias lzf=" ~/.zshrc; then
   echo "alias lzf='lazyfleet'" >>~/.zshrc
 fi
+
+echo 'if [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ]; then exec sway; fi' >> ~/.zshrc
 
 echo "==== Setup complete! ===="
 echo ""
