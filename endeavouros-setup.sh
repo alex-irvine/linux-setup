@@ -18,32 +18,34 @@ echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo s
 sudo pacman -S --noconfirm --needed \
   sway waybar wofi kitty mako swaylock xorg-xwayland \
   wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
-  bluez bluez-utils network-manager-applet pulsemixer
+  bluez bluez-utils network-manager-applet pulsemixer stow
 
 ###########################################################
-# Desktop dotfiles (sway / mako / kitty)
+# Dotfiles (single repo, stowed)
+#
+# Replaces the old per-tool clone blocks. Each top-level
+# folder in ~/dotfiles is a stow package whose tree mirrors
+# $HOME (e.g. dotfiles/sway/.config/sway/config -> ~/.config/sway/config).
 ###########################################################
-echo "==== Cloning desktop dotfiles ===="
-if [ ! -d ~/.config/sway/.git ]; then
-  rm -rf ~/.config/sway
-  git clone https://github.com/alex-irvine/sway-config.git ~/.config/sway
+echo "==== Cloning dotfiles repo ===="
+if [ ! -d ~/dotfiles/.git ]; then
+  git clone https://github.com/alex-irvine/dotfiles.git ~/dotfiles
 else
-  git -C ~/.config/sway pull
+  git -C ~/dotfiles pull --ff-only
 fi
 
-if [ ! -d ~/.config/mako/.git ]; then
-  rm -rf ~/.config/mako
-  git clone https://github.com/alex-irvine/mako-config.git ~/.config/mako
-else
-  git -C ~/.config/mako pull
-fi
+echo "==== Clearing default configs that conflict with stow ===="
+# sway/kitty/mako/nvim auto-create config dirs on first launch; clear
+# them so stow can take over. Also drop the stale per-tool config
+# files at $HOME root.
+rm -rf ~/.config/sway ~/.config/mako ~/.config/kitty \
+       ~/.config/nvim ~/.config/tmuxinator
+rm -f  ~/.zshrc ~/.tmux.conf
 
-if [ ! -d ~/.config/kitty/.git ]; then
-  rm -rf ~/.config/kitty
-  git clone https://github.com/alex-irvine/kitty-config.git ~/.config/kitty
-else
-  git -C ~/.config/kitty pull
-fi
+echo "==== Stowing dotfiles ===="
+cd ~/dotfiles
+stow --target="$HOME" --restow claude kitty mako nvim sway tmux tmuxinator zsh
+cd -
 
 ###########################################################
 # yay (AUR helper)
@@ -120,13 +122,6 @@ cat >~/.config/fontconfig/fonts.conf <<'FONTCONF'
 </fontconfig>
 FONTCONF
 
-if [ ! -d ~/.config/nvim/.git ]; then
-  rm -rf ~/.config/nvim
-  git clone https://github.com/alex-irvine/nvim-config.git ~/.config/nvim
-else
-  git -C ~/.config/nvim pull
-fi
-
 echo "==== Installing tree-sitter-cli (via Rust) ===="
 if ! command -v cargo >/dev/null 2>&1; then
   echo "Installing Rust (rustup)"
@@ -194,14 +189,6 @@ if ! grep -q "alias mux=" ~/.zshrc; then
   echo "alias mux='tmuxinator'" >>~/.zshrc
 fi
 
-echo "Cloning tmuxinator projects..."
-if [ ! -d ~/.config/tmuxinator/.git ]; then
-  rm -rf ~/.config/tmuxinator
-  git clone https://github.com/alex-irvine/tmuxinator.git ~/.config/tmuxinator
-else
-  git -C ~/.config/tmuxinator pull
-fi
-
 echo "Installing tmux plugin manager (tpm)..."
 if [ ! -d ~/.tmux/plugins/tpm ]; then
   git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
@@ -210,19 +197,6 @@ fi
 if [ ! -d ~/.tmux/plugins/tmux-yank ]; then
   git clone https://github.com/tmux-plugins/tmux-yank ~/.tmux/plugins/tmux-yank
 fi
-
-cat >~/.tmux.conf <<'TMUXCONF'
-# Fix Home and End keys in nvim
-bind-key -n Home send Escape "OH"
-bind-key -n End send Escape "OF"
-
-# List of plugins
-set -g @plugin 'tmux-plugins/tpm'
-set -g @plugin 'tmux-plugins/tmux-yank'
-
-# Initialize TMUX plugin manager (keep this line at the very bottom of tmux.conf)
-run '~/.tmux/plugins/tpm/tpm'
-TMUXCONF
 
 ###########################################################
 # Chrome

@@ -11,11 +11,13 @@ set -e
 # Standalone and idempotent — safe to re-run.
 ###########################################################
 
-CLAUDE_CONFIG_REPO="https://github.com/alex-irvine/claude-config.git"
 DIPPY_DIR="$HOME/.local/share/dippy"
 
 ###########################################################
 # 1. Claude Code CLI
+#
+# ~/.claude/settings.json is stowed from the dotfiles repo
+# by endeavouros-setup.sh — run that first.
 ###########################################################
 if ! command -v claude >/dev/null 2>&1; then
   echo "==== Installing Claude Code ===="
@@ -23,30 +25,7 @@ if ! command -v claude >/dev/null 2>&1; then
 fi
 
 ###########################################################
-# 2. ~/.claude config repo
-#
-# Claude Code's installer creates ~/.claude on first run, so
-# a plain `git clone` into it fails. If the directory exists
-# but isn't a repo yet, init the repo in-place via a temp clone.
-###########################################################
-echo "==== Setting up ~/.claude config repo ===="
-if [ -d "$HOME/.claude/.git" ]; then
-  : # repo present, fall through to pull below
-elif [ -d "$HOME/.claude" ]; then
-  TMP_CLONE=$(mktemp -d)
-  git clone "$CLAUDE_CONFIG_REPO" "$TMP_CLONE"
-  mv "$TMP_CLONE/.git" "$HOME/.claude/.git"
-  rm -rf "$TMP_CLONE"
-  git -C "$HOME/.claude" checkout -- .
-else
-  git clone "$CLAUDE_CONFIG_REPO" "$HOME/.claude"
-fi
-# Set upstream if missing (e.g. repo was initialised via orphan-branch + rename).
-git -C "$HOME/.claude" branch --set-upstream-to=origin/master master 2>/dev/null || true
-git -C "$HOME/.claude" pull --ff-only
-
-###########################################################
-# 3. TMPDIR workaround
+# 2. TMPDIR workaround
 #
 # Plugin install copies across filesystems and fails on Linux
 # because /tmp is tmpfs:
@@ -60,7 +39,7 @@ fi
 export TMPDIR="$HOME/.cache/tmp"
 
 ###########################################################
-# 4. Dippy + rtk (PreToolUse Bash hooks referenced in settings.json)
+# 3. Dippy + rtk (PreToolUse Bash hooks referenced in settings.json)
 #
 # Dippy: permission gate (no AUR/brew on Arch — install from
 # source and symlink onto PATH so the bare `dippy` command in
@@ -84,7 +63,7 @@ if ! command -v rtk >/dev/null 2>&1; then
 fi
 
 ###########################################################
-# 5. Authenticate (interactive)
+# 4. Authenticate (interactive)
 #
 # `claude plugin` commands need a logged-in session. If
 # ~/.claude/.credentials.json is missing, drop into Claude
@@ -97,7 +76,7 @@ if [ ! -f "$HOME/.claude/.credentials.json" ]; then
 fi
 
 ###########################################################
-# 6. Marketplaces
+# 5. Marketplaces
 ###########################################################
 echo "==== Registering marketplaces ===="
 claude plugin marketplace add anthropics/claude-plugins-official || true
@@ -105,7 +84,7 @@ claude plugin marketplace add JuliusBrussee/caveman || true
 claude plugin marketplace add jarrodwatts/claude-hud || true
 
 ###########################################################
-# 7. Plugins
+# 6. Plugins
 ###########################################################
 echo "==== Installing plugins ===="
 claude plugin install caveman@caveman || true
