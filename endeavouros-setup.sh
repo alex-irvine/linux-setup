@@ -18,7 +18,8 @@ echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo s
 sudo pacman -S --noconfirm --needed \
   sway waybar wofi kitty mako swaylock xorg-xwayland \
   wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
-  bluez bluez-utils network-manager-applet pulsemixer stow
+  bluez bluez-utils network-manager-applet pulsemixer stow \
+  grim slurp satty
 
 ###########################################################
 # Dotfiles (single repo, stowed)
