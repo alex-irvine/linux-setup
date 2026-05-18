@@ -65,7 +65,7 @@ fi
 # yay utils
 ###########################################################
 echo "==== Installing yay utils ===="
-yay -S bluetuith
+yay -S --noconfirm --needed bluetuith wl-clip-persist
 
 ###########################################################
 # Golang

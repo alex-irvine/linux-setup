@@ -18,7 +18,7 @@ sudo apt update && sudo apt upgrade -y
 
 echo "==== Installing required tools ===="
 wait_for_apt
-sudo apt install -y curl wget gnupg ca-certificates apt-transport-https software-properties-common build-essential unzip clang libclang-dev pkg-config
+sudo apt install -y curl wget gnupg ca-certificates apt-transport-https software-properties-common build-essential unzip clang libclang-dev pkg-config xclip wl-clipboard
 
 echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
