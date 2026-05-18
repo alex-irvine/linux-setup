@@ -304,6 +304,12 @@ echo "==== Installing Remmina ===="
 sudo pacman -S --noconfirm --needed remmina freerdp libvncserver
 
 ###########################################################
+# LibreOffice
+###########################################################
+echo "==== Installing LibreOffice ===="
+sudo pacman -S --noconfirm --needed libreoffice-fresh
+
+###########################################################
 # Azure CLI
 ###########################################################
 echo "==== Installing Azure CLI ===="
