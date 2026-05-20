@@ -57,7 +57,7 @@ rm -f  ~/.zshrc ~/.tmux.conf
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow claude kitty mako nvim sway tmux tmuxinator zsh
+stow --target="$HOME" --restow claude kitty mako nvim sway systemd tmux tmuxinator waybar zsh
 cd -
 
 ###########################################################
@@ -459,6 +459,12 @@ if ! grep -q "alias lzf=" ~/.zshrc; then
 fi
 
 echo 'if [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ]; then exec sway; fi' >> ~/.zshrc
+
+###########################################################
+# Claude Code (CLI + hooks + plugins)
+###########################################################
+echo "==== Running claude-setup.sh ===="
+bash "$SCRIPT_DIR/claude-setup.sh"
 
 echo "==== Setup complete! ===="
 echo ""

@@ -4,9 +4,11 @@ set -e
 ###########################################################
 # Claude Code setup
 #
-# Installs Claude Code CLI, clones the personal config repo
-# into ~/.claude, installs the Dippy PreToolUse hook, and
-# registers marketplaces + plugins (rtk, caveman).
+# Installs Claude Code CLI, the Dippy PreToolUse hook, rtk,
+# and registers marketplaces + plugins (caveman, claude-hud).
+#
+# ~/.claude/settings.json comes from the `claude` stow package
+# in ~/dotfiles, applied by endeavouros-setup.sh. Run that first.
 #
 # Standalone and idempotent — safe to re-run.
 ###########################################################
