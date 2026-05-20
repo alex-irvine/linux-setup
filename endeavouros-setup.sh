@@ -215,7 +215,7 @@ fi
 # Chrome
 ###########################################################
 echo "==== Installing Google Chrome ===="
-yay -S --noconfirm google-chrome
+yay -S --noconfirm --needed google-chrome
 
 if ! grep -q "alias chrome=" ~/.zshrc; then
   echo "alias chrome='nohup google-chrome --disable-gpu-compositing > /dev/null 2>&1 & disown'" >>~/.zshrc
@@ -312,7 +312,7 @@ sudo pacman -S --noconfirm --needed tig
 # Beekeeper Studio
 ###########################################################
 echo "==== Installing Beekeeper Studio ===="
-yay -S --noconfirm beekeeper-studio-bin
+yay -S --noconfirm --needed beekeeper-studio-bin
 
 ###########################################################
 # Remmina
@@ -330,7 +330,7 @@ sudo pacman -S --noconfirm --needed libreoffice-fresh
 # Azure CLI
 ###########################################################
 echo "==== Installing Azure CLI ===="
-yay -S --noconfirm azure-cli
+yay -S --noconfirm --needed azure-cli
 
 ###########################################################
 # GitHub Copilot CLI
