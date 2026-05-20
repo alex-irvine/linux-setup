@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
 ###########################################################
 # EndeavourOS / Arch setup script
 ###########################################################
@@ -16,10 +18,20 @@ echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo s
 echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 
 sudo pacman -S --noconfirm --needed \
-  sway waybar wofi kitty mako swaylock xorg-xwayland \
+  sway waybar wofi kitty mako swaylock swayidle xorg-xwayland \
   wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
   bluez bluez-utils network-manager-applet pulsemixer stow \
   grim slurp satty
+
+###########################################################
+# System config drop-ins (/etc/*)
+#
+# Source-of-truth files live under $SCRIPT_DIR/etc and mirror
+# the real /etc tree. Add new files there and re-run
+# apply-etc.sh (or this script) to install them.
+###########################################################
+echo "==== Installing /etc drop-ins ===="
+bash "$SCRIPT_DIR/apply-etc.sh"
 
 ###########################################################
 # Dotfiles (single repo, stowed)
@@ -265,10 +277,15 @@ echo "==== Installing Bottom (btm) ===="
 sudo pacman -S --noconfirm --needed bottom
 
 ###########################################################
-# Evolution
+# Email: davmail (Exchange/EWS -> IMAP bridge) + aerc (TUI client)
+#
+# davmail proxies Exchange EWS/OWA to localhost IMAP/SMTP so TUI
+# clients can connect. Configure davmail with your OWA URL after
+# install; aerc account wizard then points at localhost.
 ###########################################################
-echo "==== Installing Evolution ===="
-sudo pacman -S --noconfirm --needed evolution evolution-ews
+echo "==== Installing davmail + aerc ===="
+yay -S --noconfirm --needed davmail
+sudo pacman -S --noconfirm --needed aerc w3m
 
 ###########################################################
 # Git + gh
@@ -292,10 +309,10 @@ fi
 sudo pacman -S --noconfirm --needed tig
 
 ###########################################################
-# DBeaver
+# Beekeeper Studio
 ###########################################################
-echo "==== Installing DBeaver CE ===="
-yay -S --noconfirm dbeaver-ce
+echo "==== Installing Beekeeper Studio ===="
+yay -S --noconfirm beekeeper-studio-bin
 
 ###########################################################
 # Remmina
