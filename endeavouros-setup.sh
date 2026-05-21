@@ -287,9 +287,15 @@ sudo pacman -S --noconfirm --needed bottom
 # Native EWS client for on-prem Exchange (pre-IMAP). Stores
 # credentials via libsecret/GNOME keyring, not plaintext.
 # Add account via Edit > Accounts; type = Exchange Web Services.
+#
+# gnome-keyring = Secret Service daemon (no GNOME DE required).
+# seahorse = GUI to inspect/rename keyrings.
+# PAM auto-unlock wired via etc/pam.d/login (applied by
+# apply-etc.sh). First Evolution launch: set keyring password
+# equal to login password so it unlocks silently every login.
 ###########################################################
 echo "==== Installing Evolution + evolution-ews ===="
-sudo pacman -S --noconfirm --needed evolution evolution-ews
+sudo pacman -S --noconfirm --needed evolution evolution-ews gnome-keyring seahorse libsecret
 
 ###########################################################
 # Git + gh
