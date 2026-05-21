@@ -52,13 +52,18 @@ echo "==== Clearing default configs that conflict with stow ===="
 # them so stow can take over. Also drop the stale per-tool config
 # files at $HOME root.
 rm -rf ~/.config/sway ~/.config/mako ~/.config/foot \
-       ~/.config/nvim ~/.config/tmuxinator
+       ~/.config/nvim ~/.config/tmuxinator \
+       ~/.config/gtk-3.0 ~/.config/gtk-4.0
 rm -f  ~/.zshrc ~/.tmux.conf
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow claude foot mako nvim sway systemd tmux tmuxinator waybar zsh
+stow --target="$HOME" --restow claude foot gtk mako nvim sway systemd tmux tmuxinator waybar zsh
 cd -
+
+echo "==== Setting dark color-scheme (dconf) ===="
+gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' || true
+gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' || true
 
 ###########################################################
 # yay (AUR helper)
@@ -277,15 +282,14 @@ echo "==== Installing Bottom (btm) ===="
 sudo pacman -S --noconfirm --needed bottom
 
 ###########################################################
-# Email: davmail (Exchange/EWS -> IMAP bridge) + aerc (TUI client)
+# Email + Calendar: Evolution + evolution-ews
 #
-# davmail proxies Exchange EWS/OWA to localhost IMAP/SMTP so TUI
-# clients can connect. Configure davmail with your OWA URL after
-# install; aerc account wizard then points at localhost.
+# Native EWS client for on-prem Exchange (pre-IMAP). Stores
+# credentials via libsecret/GNOME keyring, not plaintext.
+# Add account via Edit > Accounts; type = Exchange Web Services.
 ###########################################################
-echo "==== Installing davmail + aerc ===="
-yay -S --noconfirm --needed davmail
-sudo pacman -S --noconfirm --needed aerc w3m
+echo "==== Installing Evolution + evolution-ews ===="
+sudo pacman -S --noconfirm --needed evolution evolution-ews
 
 ###########################################################
 # Git + gh
