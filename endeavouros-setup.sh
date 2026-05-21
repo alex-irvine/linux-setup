@@ -18,7 +18,7 @@ echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo s
 echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 
 sudo pacman -S --noconfirm --needed \
-  sway waybar wofi kitty mako swaylock swayidle xorg-xwayland \
+  sway waybar wofi foot mako swaylock swayidle xorg-xwayland \
   wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
   bluez bluez-utils network-manager-applet pulsemixer stow \
   grim slurp satty task
@@ -48,16 +48,16 @@ else
 fi
 
 echo "==== Clearing default configs that conflict with stow ===="
-# sway/kitty/mako/nvim auto-create config dirs on first launch; clear
+# sway/foot/mako/nvim auto-create config dirs on first launch; clear
 # them so stow can take over. Also drop the stale per-tool config
 # files at $HOME root.
-rm -rf ~/.config/sway ~/.config/mako ~/.config/kitty \
+rm -rf ~/.config/sway ~/.config/mako ~/.config/foot \
        ~/.config/nvim ~/.config/tmuxinator
 rm -f  ~/.zshrc ~/.tmux.conf
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow claude kitty mako nvim sway systemd tmux tmuxinator waybar zsh
+stow --target="$HOME" --restow claude foot mako nvim sway systemd tmux tmuxinator waybar zsh
 cd -
 
 ###########################################################
