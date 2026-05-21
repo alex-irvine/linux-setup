@@ -21,7 +21,7 @@ sudo pacman -S --noconfirm --needed \
   sway waybar wofi kitty mako swaylock swayidle xorg-xwayland \
   wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
   bluez bluez-utils network-manager-applet pulsemixer stow \
-  grim slurp satty
+  grim slurp satty task
 
 ###########################################################
 # System config drop-ins (/etc/*)
