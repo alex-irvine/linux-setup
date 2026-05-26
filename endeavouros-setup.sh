@@ -12,10 +12,30 @@ sudo pacman -Syu --noconfirm
 
 echo "==== Installing base tools ===="
 sudo pacman -S --noconfirm --needed \
-  base-devel curl wget gnupg ca-certificates unzip clang pkgconf git
+  base-devel curl wget gnupg ca-certificates unzip clang pkgconf git github-cli
 
-echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
-echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+###########################################################
+# GitHub CLI auth — must happen BEFORE the dotfiles clone
+# because dotfiles is a private repo. `gh auth login` wires
+# `gh auth git-credential` as the git credential helper, so
+# subsequent https clones of private repos succeed.
+###########################################################
+echo "==== GitHub CLI Authentication ===="
+if ! gh auth status >/dev/null 2>&1; then
+  echo "Authenticate now — required for private dotfiles clone + lazyorc/lazyfleet."
+  gh auth login --git-protocol https --hostname github.com
+fi
+gh auth setup-git
+if ! gh auth status 2>&1 | grep -q 'read:packages'; then
+  gh auth refresh -s read:packages
+fi
+
+if ! grep -q '^fs.inotify.max_user_watches=' /etc/sysctl.conf; then
+  echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+fi
+if ! grep -q '^fs.inotify.max_user_instances=' /etc/sysctl.conf; then
+  echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+fi
 
 sudo pacman -S --noconfirm --needed \
   sway waybar wofi foot mako swaylock swayidle xorg-xwayland \
@@ -50,11 +70,15 @@ fi
 echo "==== Clearing default configs that conflict with stow ===="
 # sway/foot/mako/nvim auto-create config dirs on first launch; clear
 # them so stow can take over. Also drop the stale per-tool config
-# files at $HOME root.
-rm -rf ~/.config/sway ~/.config/mako ~/.config/foot \
-       ~/.config/nvim ~/.config/tmuxinator \
-       ~/.config/gtk-3.0 ~/.config/gtk-4.0
-rm -f  ~/.zshrc ~/.tmux.conf
+# files at $HOME root. Skip anything already symlinked (re-run safe).
+for d in ~/.config/sway ~/.config/mako ~/.config/foot \
+         ~/.config/nvim ~/.config/tmuxinator \
+         ~/.config/gtk-3.0 ~/.config/gtk-4.0; do
+  [ -L "$d" ] || rm -rf "$d"
+done
+for f in ~/.zshrc ~/.tmux.conf; do
+  [ -L "$f" ] || rm -f "$f"
+done
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
@@ -105,16 +129,20 @@ sudo pacman -S --noconfirm --needed neovim
 echo "==== Installing Nerd Fonts ===="
 mkdir -p ~/.local/share/fonts
 
-JBM_TEMP="/tmp/JetBrainsMono.zip"
-curl -fLo "$JBM_TEMP" https://github.com/ryanoasis/nerd-fonts/releases/download/v3.3.0/JetBrainsMono.zip
-mkdir -p ~/.local/share/fonts/JetBrainsMono
-unzip -o "$JBM_TEMP" -d ~/.local/share/fonts/JetBrainsMono
-rm "$JBM_TEMP"
+if [ ! -d ~/.local/share/fonts/JetBrainsMono ] || [ -z "$(ls -A ~/.local/share/fonts/JetBrainsMono 2>/dev/null)" ]; then
+  JBM_TEMP="/tmp/JetBrainsMono.zip"
+  curl -fLo "$JBM_TEMP" https://github.com/ryanoasis/nerd-fonts/releases/download/v3.3.0/JetBrainsMono.zip
+  mkdir -p ~/.local/share/fonts/JetBrainsMono
+  unzip -o "$JBM_TEMP" -d ~/.local/share/fonts/JetBrainsMono
+  rm "$JBM_TEMP"
+fi
 
-NFS_TEMP="/tmp/NerdFontsSymbolsOnly.zip"
-curl -fLo "$NFS_TEMP" https://github.com/ryanoasis/nerd-fonts/releases/download/v3.3.0/NerdFontsSymbolsOnly.zip
-unzip -o "$NFS_TEMP" -d ~/.local/share/fonts
-rm "$NFS_TEMP"
+if ! ls ~/.local/share/fonts/SymbolsNerdFont*.ttf >/dev/null 2>&1; then
+  NFS_TEMP="/tmp/NerdFontsSymbolsOnly.zip"
+  curl -fLo "$NFS_TEMP" https://github.com/ryanoasis/nerd-fonts/releases/download/v3.3.0/NerdFontsSymbolsOnly.zip
+  unzip -o "$NFS_TEMP" -d ~/.local/share/fonts
+  rm "$NFS_TEMP"
+fi
 
 fc-cache -fv
 
@@ -238,10 +266,12 @@ sudo usermod -aG docker "$USER"
 # Lazydocker
 ###########################################################
 echo "==== Installing Lazydocker ===="
-LAZYDOCKER_VERSION=$(curl -s https://api.github.com/repos/jesseduffield/lazydocker/releases/latest | grep tag_name | cut -d '"' -f4)
-curl -L "https://github.com/jesseduffield/lazydocker/releases/download/${LAZYDOCKER_VERSION}/lazydocker_${LAZYDOCKER_VERSION#v}_Linux_x86_64.tar.gz" -o lazydocker.tar.gz
-sudo tar -xzvf lazydocker.tar.gz -C /usr/local/bin lazydocker
-rm lazydocker.tar.gz
+if ! command -v lazydocker >/dev/null 2>&1; then
+  LAZYDOCKER_VERSION=$(curl -s https://api.github.com/repos/jesseduffield/lazydocker/releases/latest | grep tag_name | cut -d '"' -f4)
+  curl -L "https://github.com/jesseduffield/lazydocker/releases/download/${LAZYDOCKER_VERSION}/lazydocker_${LAZYDOCKER_VERSION#v}_Linux_x86_64.tar.gz" -o lazydocker.tar.gz
+  sudo tar -xzvf lazydocker.tar.gz -C /usr/local/bin lazydocker
+  rm lazydocker.tar.gz
+fi
 
 if ! grep -q "alias lzd=" ~/.zshrc; then
   echo "alias lzd='lazydocker'" >>~/.zshrc
@@ -269,7 +299,9 @@ sudo pacman -S --noconfirm --needed k9s
 # Flux CLI
 ###########################################################
 echo "==== Installing Flux CLI ===="
-curl -s https://fluxcd.io/install.sh | sudo bash
+if ! command -v flux >/dev/null 2>&1; then
+  curl -s https://fluxcd.io/install.sh | sudo bash
+fi
 
 echo "==== Installing Flux k9s Plugin ===="
 mkdir -p ~/.config/k9s/plugins/
@@ -296,12 +328,6 @@ sudo pacman -S --noconfirm --needed bottom
 ###########################################################
 echo "==== Installing Evolution + evolution-ews ===="
 sudo pacman -S --noconfirm --needed evolution evolution-ews gnome-keyring seahorse libsecret
-
-###########################################################
-# Git + gh
-###########################################################
-echo "==== Installing Git + GitHub CLI ===="
-sudo pacman -S --noconfirm --needed git github-cli
 
 ###########################################################
 # LazyGit
@@ -358,13 +384,15 @@ go install github.com/control-theory/gonzo/cmd/gonzo@v0.3.2
 # logcli (Grafana Loki CLI)
 ###########################################################
 echo "==== Installing logcli ===="
-LOGCLI_VERSION=$(curl -s https://api.github.com/repos/grafana/loki/releases/latest | grep '"tag_name"' | cut -d '"' -f4)
-mkdir -p ~/.local/bin
-curl -L "https://github.com/grafana/loki/releases/download/${LOGCLI_VERSION}/logcli-linux-amd64.zip" -o /tmp/logcli-linux-amd64.zip
-unzip -o /tmp/logcli-linux-amd64.zip -d /tmp
-chmod +x /tmp/logcli-linux-amd64
-mv /tmp/logcli-linux-amd64 ~/.local/bin/logcli
-rm /tmp/logcli-linux-amd64.zip
+if ! command -v logcli >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/logcli" ]; then
+  LOGCLI_VERSION=$(curl -s https://api.github.com/repos/grafana/loki/releases/latest | grep '"tag_name"' | cut -d '"' -f4)
+  mkdir -p ~/.local/bin
+  curl -L "https://github.com/grafana/loki/releases/download/${LOGCLI_VERSION}/logcli-linux-amd64.zip" -o /tmp/logcli-linux-amd64.zip
+  unzip -o /tmp/logcli-linux-amd64.zip -d /tmp
+  chmod +x /tmp/logcli-linux-amd64
+  mv /tmp/logcli-linux-amd64 ~/.local/bin/logcli
+  rm /tmp/logcli-linux-amd64.zip
+fi
 
 if ! grep -q "logcli completion zsh" ~/.zshrc; then
   echo "" >>~/.zshrc
@@ -433,14 +461,9 @@ echo "==== Installing air ===="
 go install github.com/air-verse/air@latest
 
 ###########################################################
-# GitHub auth + datascopesystems tools
-# lazyorc and lazyfleet are private releases — must auth first
+# datascopesystems private releases
+# (gh auth + read:packages scope handled at top of script)
 ###########################################################
-echo "==== GitHub CLI Authentication ===="
-echo "Authenticate now — required for lazyorc and lazyfleet install."
-gh auth login
-gh auth refresh -s read:packages
-
 echo "==== Installing lazyorc ===="
 mkdir -p ~/.local/bin
 gh release download --repo datascopesystems/lazyorc \
@@ -468,7 +491,9 @@ if ! grep -q "alias lzf=" ~/.zshrc; then
   echo "alias lzf='lazyfleet'" >>~/.zshrc
 fi
 
-echo 'if [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ]; then exec sway; fi' >> ~/.zshrc
+if ! grep -q 'exec sway' ~/.zshrc; then
+  echo 'if [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ]; then exec sway; fi' >> ~/.zshrc
+fi
 
 ###########################################################
 # Claude Code (CLI + hooks + plugins)

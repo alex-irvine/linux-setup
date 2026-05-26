@@ -4,16 +4,15 @@ set -e
 ###########################################################
 # Claude Code setup
 #
-# Installs Claude Code CLI, the Dippy PreToolUse hook, rtk,
-# and registers marketplaces + plugins (caveman, claude-hud).
+# Installs Claude Code CLI, rtk, and registers marketplaces +
+# plugins (caveman, claude-hud).
 #
-# ~/.claude/settings.json comes from the `claude` stow package
-# in ~/dotfiles, applied by endeavouros-setup.sh. Run that first.
+# ~/.claude/settings.json (and agents/commands/memory) come
+# from the `claude` stow package in ~/dotfiles, applied by
+# endeavouros-setup.sh. Run that first.
 #
 # Standalone and idempotent — safe to re-run.
 ###########################################################
-
-DIPPY_DIR="$HOME/.local/share/dippy"
 
 ###########################################################
 # 1. Claude Code CLI
@@ -41,24 +40,11 @@ fi
 export TMPDIR="$HOME/.cache/tmp"
 
 ###########################################################
-# 3. Dippy + rtk (PreToolUse Bash hooks referenced in settings.json)
+# 3. rtk (PreToolUse Bash hook referenced in settings.json)
 #
-# Dippy: permission gate (no AUR/brew on Arch — install from
-# source and symlink onto PATH so the bare `dippy` command in
-# settings.json resolves).
-# rtk: output compression proxy. Hook config lives in tracked
+# Output compression proxy. Hook config lives in tracked
 # settings.json, so we only need the binary here.
 ###########################################################
-echo "==== Installing Dippy ===="
-if [ -d "$DIPPY_DIR/.git" ]; then
-  git -C "$DIPPY_DIR" pull --ff-only
-else
-  rm -rf "$DIPPY_DIR"
-  git clone https://github.com/ldayton/Dippy.git "$DIPPY_DIR"
-fi
-mkdir -p "$HOME/.local/bin"
-ln -sf "$DIPPY_DIR/bin/dippy-hook" "$HOME/.local/bin/dippy"
-
 echo "==== Installing rtk ===="
 if ! command -v rtk >/dev/null 2>&1; then
   curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
