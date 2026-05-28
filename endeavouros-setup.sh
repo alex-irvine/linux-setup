@@ -54,18 +54,15 @@ echo "==== Installing /etc drop-ins ===="
 bash "$SCRIPT_DIR/apply-etc.sh"
 
 ###########################################################
-# Dotfiles (single repo, stowed)
+# Repo clones (dotfiles, .triage, tmux plugins)
 #
-# Replaces the old per-tool clone blocks. Each top-level
-# folder in ~/dotfiles is a stow package whose tree mirrors
-# $HOME (e.g. dotfiles/sway/.config/sway/config -> ~/.config/sway/config).
+# Lives in clone-repos.sh so a fresh OS install is one
+# `bash clone-repos.sh` away from being personalised. Must
+# run AFTER `gh auth login` above (private dotfiles repo)
+# and BEFORE stow below (stow needs target dirs cloned).
 ###########################################################
-echo "==== Cloning dotfiles repo ===="
-if [ ! -d ~/dotfiles/.git ]; then
-  git clone https://github.com/alex-irvine/dotfiles.git ~/dotfiles
-else
-  git -C ~/dotfiles pull --ff-only
-fi
+echo "==== Cloning repos ===="
+bash "$SCRIPT_DIR/clone-repos.sh"
 
 echo "==== Clearing default configs that conflict with stow ===="
 # sway/foot/mako/nvim auto-create config dirs on first launch; clear
@@ -85,7 +82,7 @@ done
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow claude evolution foot gtk mako nvim sway systemd task tmux tmuxinator waybar zsh
+stow --target="$HOME" --restow claude evolution foot gtk mako nvim sway systemd task tmux tmuxinator triage waybar zsh
 cd -
 
 echo "==== Setting dark color-scheme (dconf) ===="
@@ -238,14 +235,7 @@ if ! grep -q "alias mux=" ~/.zshrc; then
   echo "alias mux='tmuxinator'" >>~/.zshrc
 fi
 
-echo "Installing tmux plugin manager (tpm)..."
-if [ ! -d ~/.tmux/plugins/tpm ]; then
-  git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
-fi
-
-if [ ! -d ~/.tmux/plugins/tmux-yank ]; then
-  git clone https://github.com/tmux-plugins/tmux-yank ~/.tmux/plugins/tmux-yank
-fi
+# tmux plugin repos (tpm, tmux-yank) are cloned in clone-repos.sh.
 
 ###########################################################
 # Chrome
