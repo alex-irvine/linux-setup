@@ -73,16 +73,19 @@ echo "==== Clearing default configs that conflict with stow ===="
 # files at $HOME root. Skip anything already symlinked (re-run safe).
 for d in ~/.config/sway ~/.config/mako ~/.config/foot \
          ~/.config/nvim ~/.config/tmuxinator \
-         ~/.config/gtk-3.0 ~/.config/gtk-4.0; do
+         ~/.config/gtk-3.0 ~/.config/gtk-4.0 \
+         ~/.config/evolution/sources ~/.config/evolution/signatures \
+         ~/.config/evolution/mail/folders ~/.config/evolution/mail/views; do
   [ -L "$d" ] || rm -rf "$d"
 done
-for f in ~/.zshrc ~/.tmux.conf; do
+for f in ~/.zshrc ~/.tmux.conf ~/.taskrc \
+         ~/.config/evolution/mail/state.ini; do
   [ -L "$f" ] || rm -f "$f"
 done
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow claude foot gtk mako nvim sway systemd tmux tmuxinator waybar zsh
+stow --target="$HOME" --restow claude evolution foot gtk mako nvim sway systemd task tmux tmuxinator waybar zsh
 cd -
 
 echo "==== Setting dark color-scheme (dconf) ===="
@@ -343,6 +346,51 @@ fi
 # Tig
 ###########################################################
 sudo pacman -S --noconfirm --needed tig
+
+###########################################################
+# yazi (terminal file manager)
+###########################################################
+echo "==== Installing yazi ===="
+# yazi core + previewer deps:
+#   resvg: SVG (yazi's svg previewer calls the `resvg` CLI, not rsvg-convert).
+#   ttf-jetbrains-mono-nerd: satisfies yazi's nerd-fonts group dep non-interactively
+#     (matches the foot font choice).
+#   jq/p7zip/zoxide: yazi optdeps for json/archive previewers + cd-history.
+#   chafa: sixel image rendering in foot.
+#   ffmpegthumbnailer/imagemagick/poppler/mediainfo/bat: thumbnailers + viewers
+#     yazi uses for video/raster/PDF/media-info/syntax-highlighted text.
+#   atool: archive listing fallback.
+sudo pacman -S --noconfirm --needed \
+  yazi \
+  resvg \
+  ttf-jetbrains-mono-nerd \
+  jq \
+  p7zip \
+  zoxide \
+  chafa \
+  ffmpegthumbnailer \
+  poppler \
+  imagemagick \
+  mediainfo \
+  bat \
+  atool
+
+# cd-on-quit wrapper from yazi docs:
+# https://yazi-rs.github.io/docs/quick-start#shell-wrapper
+if ! grep -q "yazi-cwd" ~/.zshrc; then
+  cat >>~/.zshrc <<'EOF'
+
+# yazi cd-on-quit
+function y() {
+  local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
+  yazi "$@" --cwd-file="$tmp"
+  if cwd="$(command cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
+    builtin cd -- "$cwd"
+  fi
+  rm -f -- "$tmp"
+}
+EOF
+fi
 
 ###########################################################
 # Beekeeper Studio
