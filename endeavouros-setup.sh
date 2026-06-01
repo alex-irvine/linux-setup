@@ -124,13 +124,6 @@ sudo pacman -S --noconfirm --needed go
 echo "==== Installing .NET SDK ===="
 sudo pacman -S --noconfirm --needed dotnet-sdk aspnet-runtime
 
-# Roslyn C# language server for nvim (roslyn.nvim). First-party Microsoft tool
-# from nuget.org (prefix-reserved, MIT). Installs to ~/.dotnet/tools (on PATH
-# via zsh/.zshrc). Pinned for reproducibility; bump when you want newer.
-echo "==== Installing roslyn-language-server (dotnet tool) ===="
-dotnet tool install -g roslyn-language-server --version 5.8.0-1.26266.2 || \
-  dotnet tool update -g roslyn-language-server --version 5.8.0-1.26266.2
-
 ###########################################################
 # Node.js + npm
 ###########################################################
