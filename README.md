@@ -22,8 +22,8 @@ Sudo password cached for pacman/yay.
    tmux, tmuxinator, waybar, zsh, gtk, systemd, **claude**).
 3. Installs apps + CLIs: yay, Go, Node, Neovim, Nerd Fonts, Rust,
    tree-sitter, Oh My Zsh, tmux + tpm, Chrome, Docker, kubectl, helm,
-   k9s, flux, bottom, Evolution + ews, git/gh, lazygit, tig, Beekeeper,
-   Remmina, LibreOffice, az cli, Copilot CLI, gonzo, logcli, yq, air.
+   k9s, flux, bottom, earlyoom, Evolution + ews, git/gh, lazygit, tig,
+   Beekeeper, Remmina, LibreOffice, az cli, Copilot CLI, gonzo, logcli, yq, air.
 4. Pulls private `lazyorc` + `lazyfleet` releases via gh.
 5. Runs `claude-setup.sh` — installs Claude Code CLI, rtk, marketplaces
    (caveman, claude-plugins-official, claude-hud), plugins.

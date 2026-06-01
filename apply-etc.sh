@@ -27,6 +27,7 @@ while IFS= read -r -d '' src; do
     etc/sysctl.d/*|etc/sysctl.conf) touched[sysctl]=1 ;;
     etc/udev/rules.d/*)            touched[udev]=1 ;;
     etc/modprobe.d/*)              touched[modprobe]=1 ;;
+    etc/default/earlyoom)          touched[earlyoom]=1 ;;
   esac
 done < <(find "$ETC_SRC" -type f -print0)
 
@@ -36,6 +37,10 @@ done < <(find "$ETC_SRC" -type f -print0)
 [ -n "${touched[systemd]:-}" ]  && sudo systemctl daemon-reexec                || true
 [ -n "${touched[sysctl]:-}" ]   && sudo sysctl --system >/dev/null             || true
 [ -n "${touched[udev]:-}" ]     && sudo udevadm control --reload               || true
+# earlyoom reads EARLYOOM_ARGS at start only; restart to pick up new thresholds.
+# `|| true` tolerates the unit not being installed yet on a fresh bootstrap
+# (endeavouros-setup.sh installs + enables earlyoom after this runs).
+[ -n "${touched[earlyoom]:-}" ] && { sudo systemctl restart earlyoom || true; }
 # sleep.conf: re-read on next suspend, no reload needed.
 # modprobe.d: applies on next module load / reboot.
 

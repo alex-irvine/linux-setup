@@ -1,0 +1,15 @@
+# earlyoom -- userspace OOM killer. Read by /usr/lib/systemd/system/earlyoom.service
+# via EnvironmentFile=-/etc/default/earlyoom (ExecStart runs `earlyoom $EARLYOOM_ARGS`).
+#
+# Purpose: send SIGTERM (then SIGKILL) to the biggest memory hog BEFORE the
+# kernel thrashes swap into an unrecoverable freeze. Root cause of the
+# 2026-06-01 hard-reboot hang: host Roslyn LSP loading the full PrimaVeraWS
+# solution on top of the running devcontainer exhausted 30G RAM with no OOM
+# daemon present. Pairs with vm.swappiness=10 (etc/sysctl.d/99-memory.conf).
+#
+#   -r 60     report memory + swap state every 60s (visible in journalctl -u earlyoom)
+#   -m 5,2    SIGTERM when RAM available drops below 5%, SIGKILL below 2%
+#   -s 10,5   SIGTERM when swap free drops below 10%, SIGKILL below 5%
+#   --avoid   never target the desktop/session spine (killing these = lost session)
+#   --prefer  target the known memory hogs first (LSP, dotnet, browser, node, SQL Server)
+EARLYOOM_ARGS="-r 60 -m 5,2 -s 10,5 --avoid '(^|/)(systemd|systemd-logind|sway|swayidle|swaylock|foot|tmux|Xwayland|dbus-daemon)$' --prefer '(^|/)(roslyn-language-server|dotnet|chrome|node|sqlservr)$'"

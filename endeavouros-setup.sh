@@ -266,6 +266,23 @@ sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER"
 
 ###########################################################
+# earlyoom (userspace OOM killer)
+#
+# Safety net for swap-thrash freezes: host Roslyn LSP loading a full solution
+# on top of a running devcontainer can exhaust RAM. With no OOM daemon the
+# kernel thrashes swap indefinitely and only a hard reboot recovers. earlyoom
+# SIGTERMs the biggest hog first. Thresholds + avoid/prefer lists live in
+# etc/default/earlyoom (installed by apply-etc.sh); pairs with vm.swappiness=10
+# (etc/sysctl.d/99-memory.conf, also applied by apply-etc.sh).
+###########################################################
+echo "==== Installing earlyoom ===="
+sudo pacman -S --noconfirm --needed earlyoom
+sudo systemctl enable --now earlyoom
+# Re-run safe: pick up any edits to /etc/default/earlyoom (enable --now is a
+# no-op on an already-running unit and would not reload changed args).
+sudo systemctl restart earlyoom
+
+###########################################################
 # Lazydocker
 ###########################################################
 echo "==== Installing Lazydocker ===="
