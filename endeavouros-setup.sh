@@ -440,10 +440,15 @@ echo "==== Installing GitHub Copilot CLI ===="
 sudo npm install -g @github/copilot
 
 ###########################################################
-# Gonzo (log viewer)
+# Gonzo (log viewer) -- gonzofk fork
 ###########################################################
-echo "==== Installing Gonzo ===="
-go install github.com/control-theory/gonzo/cmd/gonzo@v0.3.2
+echo "==== Installing gonzofk ===="
+mkdir -p ~/.local/bin
+gh release download --repo alex-irvine/gonzo \
+  --pattern 'gonzofk-linux-amd64' \
+  --output ~/.local/bin/gonzofk \
+  --clobber
+chmod +x ~/.local/bin/gonzofk
 
 ###########################################################
 # logcli (Grafana Loki CLI)
