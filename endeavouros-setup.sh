@@ -261,7 +261,7 @@ fi
 # Docker
 ###########################################################
 echo "==== Installing Docker ===="
-sudo pacman -S --noconfirm --needed docker docker-compose
+sudo pacman -S --noconfirm --needed docker docker-buildx docker-compose
 sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER"
 
