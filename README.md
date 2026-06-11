@@ -34,7 +34,7 @@ Idempotent. Re-run safe.
 
 - `endeavouros-setup.sh` — main entry point.
 - `claude-setup.sh` — Claude Code CLI + plugins. Called by main; safe standalone.
-- `apply-etc.sh` + `etc/` — `/etc` drop-ins (PAM, sysctl, etc).
+- `apply-etc.sh` + `etc/` — `/etc` drop-ins (PAM, sysctl, NetworkManager prefer-wired route metrics, etc). Executable sources install 755, plain configs 644.
 - `popos-setup.sh` — legacy Pop!_OS variant.
 - `fix-suspend.sh` — laptop suspend tweaks.
 

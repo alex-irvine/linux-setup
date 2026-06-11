@@ -16,8 +16,11 @@ declare -A touched=()
 while IFS= read -r -d '' src; do
   rel="${src#"$SCRIPT_DIR/"}"            # etc/systemd/logind.conf.d/lid.conf
   dest="/$rel"                            # /etc/systemd/logind.conf.d/lid.conf
-  echo "  -> $dest"
-  sudo install -Dm644 "$src" "$dest"
+  # Executable sources (e.g. NetworkManager dispatcher scripts) install 755;
+  # plain config drop-ins install 644.
+  if [ -x "$src" ]; then mode=755; else mode=644; fi
+  echo "  -> $dest (mode $mode)"
+  sudo install -Dm"$mode" "$src" "$dest"
   # Track top-level conf.d (or plain conf file) for reload dispatch.
   case "$rel" in
     etc/systemd/logind.conf.d/*)   touched[logind]=1 ;;
@@ -25,6 +28,7 @@ while IFS= read -r -d '' src; do
     etc/systemd/sleep.conf.d/*)    touched[sleep]=1 ;;
     etc/systemd/system.conf.d/*)   touched[systemd]=1 ;;
     etc/sysctl.d/*|etc/sysctl.conf) touched[sysctl]=1 ;;
+    etc/NetworkManager/conf.d/*)  touched[networkmanager]=1 ;;
     etc/udev/rules.d/*)            touched[udev]=1 ;;
     etc/modprobe.d/*)              touched[modprobe]=1 ;;
     etc/default/earlyoom)          touched[earlyoom]=1 ;;
@@ -37,6 +41,9 @@ done < <(find "$ETC_SRC" -type f -print0)
 [ -n "${touched[systemd]:-}" ]  && sudo systemctl daemon-reexec                || true
 [ -n "${touched[sysctl]:-}" ]   && sudo sysctl --system >/dev/null             || true
 [ -n "${touched[udev]:-}" ]     && sudo udevadm control --reload               || true
+# NetworkManager conf.d: re-read config. New route metrics apply on the next
+# (re)activation — e.g. next dock/undock — without dropping current links.
+[ -n "${touched[networkmanager]:-}" ] && sudo nmcli general reload             || true
 # earlyoom reads EARLYOOM_ARGS at start only; restart to pick up new thresholds.
 # `|| true` tolerates the unit not being installed yet on a fresh bootstrap
 # (endeavouros-setup.sh installs + enables earlyoom after this runs).
