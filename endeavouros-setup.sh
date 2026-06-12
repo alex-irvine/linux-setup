@@ -69,14 +69,14 @@ echo "==== Clearing default configs that conflict with stow ===="
 # them so stow can take over. Also drop the stale per-tool config
 # files at $HOME root. Skip anything already symlinked (re-run safe).
 for d in ~/.config/sway ~/.config/mako ~/.config/foot \
-         ~/.config/nvim ~/.config/tmuxinator \
-         ~/.config/gtk-3.0 ~/.config/gtk-4.0 \
-         ~/.config/evolution/sources ~/.config/evolution/signatures \
-         ~/.config/evolution/mail/folders ~/.config/evolution/mail/views; do
+  ~/.config/nvim ~/.config/tmuxinator \
+  ~/.config/gtk-3.0 ~/.config/gtk-4.0 \
+  ~/.config/evolution/sources ~/.config/evolution/signatures \
+  ~/.config/evolution/mail/folders ~/.config/evolution/mail/views; do
   [ -L "$d" ] || rm -rf "$d"
 done
 for f in ~/.zshrc ~/.tmux.conf ~/.taskrc \
-         ~/.config/evolution/mail/state.ini; do
+  ~/.config/evolution/mail/state.ini; do
   [ -L "$f" ] || rm -f "$f"
 done
 
@@ -100,7 +100,6 @@ if ! command -v yay >/dev/null 2>&1; then
   (cd "$TMP_YAY" && makepkg -si --noconfirm)
   rm -rf "$TMP_YAY"
 fi
-
 
 ###########################################################
 # yay utils
@@ -129,6 +128,12 @@ sudo pacman -S --noconfirm --needed dotnet-sdk aspnet-runtime
 ###########################################################
 echo "==== Installing Node.js + npm ===="
 sudo pacman -S --noconfirm --needed nodejs npm
+
+###########################################################
+# Bun
+###########################################################
+echo "==== Installing Bun ===="
+curl -fsSL https://bun.com/install | bash
 
 ###########################################################
 # Neovim
@@ -562,7 +567,7 @@ if ! grep -q "alias lzf=" ~/.zshrc; then
 fi
 
 if ! grep -q 'exec sway' ~/.zshrc; then
-  echo 'if [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ]; then exec sway; fi' >> ~/.zshrc
+  echo 'if [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ]; then exec sway; fi' >>~/.zshrc
 fi
 
 ###########################################################
