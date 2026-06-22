@@ -576,6 +576,9 @@ fi
 echo "==== Running claude-setup.sh ===="
 bash "$SCRIPT_DIR/claude-setup.sh"
 
+echo "==== Running setup-vpn.sh ===="
+bash "$SCRIPT_DIR/setup-vpn.sh"
+
 echo "==== Setup complete! ===="
 echo ""
 echo "Restart required for Docker group changes to take effect."

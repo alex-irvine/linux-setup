@@ -27,6 +27,8 @@ Sudo password cached for pacman/yay.
 4. Pulls private `lazyorc` + `lazyfleet` releases via gh.
 5. Runs `claude-setup.sh` — installs Claude Code CLI, rtk, marketplaces
    (caveman, claude-plugins-official, claude-hud), plugins.
+6. Runs `setup-vpn.sh` — imports the OpenVPN profile into NetworkManager
+   (only if you've placed it locally — see VPN below).
 
 Idempotent. Re-run safe.
 
@@ -37,6 +39,22 @@ Idempotent. Re-run safe.
 - `apply-etc.sh` + `etc/` — `/etc` drop-ins (PAM, sysctl, NetworkManager prefer-wired route metrics, etc). Executable sources install 755, plain configs 644.
 - `popos-setup.sh` — legacy Pop!_OS variant.
 - `fix-suspend.sh` — laptop suspend tweaks.
+- `setup-vpn.sh` — imports OpenVPN profile into NetworkManager. Called by main; safe standalone.
+
+## VPN
+
+Profile is **confidential** (inline private key, user-locked, 2FA) — never committed.
+
+1. Fetch profile from **https://86.28.72.134/** — log in as your user, download the user-locked `.ovpn`.
+2. Place it: `mkdir -p ~/.config/vpn && mv ~/Downloads/profile-userlocked.ovpn ~/.config/vpn/ && chmod 600 ~/.config/vpn/profile-userlocked.ovpn`
+3. Import: `bash setup-vpn.sh`
+
+Connect / disconnect (aliases in dotfiles `zsh`):
+
+| Alias | Command |
+|---|---|
+| `vpn-up` | `nmcli --ask connection up profile-userlocked` (prompts password + 2FA code) |
+| `vpn-down` | `nmcli connection down profile-userlocked` |
 
 ## Claude config persistence
 

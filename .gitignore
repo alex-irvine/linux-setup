@@ -1,0 +1,2 @@
+# VPN profiles contain inline private keys — never commit
+*.ovpn
