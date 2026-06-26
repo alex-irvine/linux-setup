@@ -576,6 +576,15 @@ fi
 echo "==== Running claude-setup.sh ===="
 bash "$SCRIPT_DIR/claude-setup.sh"
 
+###########################################################
+# Claude Code (CLI + hooks + plugins)
+###########################################################
+echo "==== Running opencode-setup.sh ===="
+bash "$SCRIPT_DIR/opencode-setup.sh"
+
+###########################################################
+# VPN setup
+###########################################################
 echo "==== Running setup-vpn.sh ===="
 bash "$SCRIPT_DIR/setup-vpn.sh"
 
