@@ -596,11 +596,19 @@ echo "==== Installing Ollama ===="
 sudo pacman -S --noconfirm --needed ollama
 sudo systemctl enable --now ollama
 
-echo "==== Pulling Qwen2.5-Coder model ===="
-OLLAMA_MODEL="qwen2.5-coder:7b"
-if ! ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"; then
-  ollama pull "$OLLAMA_MODEL"
-fi
+echo "==== Pulling local models ===="
+# All agentic-tuned (emit structured tool_calls → work in opencode's tool
+# loop; qwen2.5-coder does NOT and was dropped). MoE variants (gpt-oss,
+# qwen3-coder a3b) keep active params low → fast on this CPU-only box.
+# Exposed in dotfiles opencode.jsonc.
+#   gpt-oss:20b              ~14GB  MoE ~3.6B active  — daily driver
+#   qwen3-coder:30b-a3b-q4   ~19GB  MoE 3B active     — heavy code, 256K ctx
+#   devstral:24b             ~14GB  dense, agentic-coding tuned
+for OLLAMA_MODEL in gpt-oss:20b qwen3-coder:30b-a3b-q4_K_M devstral:24b; do
+  if ! ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"; then
+    ollama pull "$OLLAMA_MODEL"
+  fi
+done
 
 ###########################################################
 # opencode (AI coding agent)
