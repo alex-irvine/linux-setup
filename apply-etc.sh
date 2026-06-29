@@ -32,6 +32,7 @@ while IFS= read -r -d '' src; do
     etc/udev/rules.d/*)            touched[udev]=1 ;;
     etc/modprobe.d/*)              touched[modprobe]=1 ;;
     etc/default/earlyoom)          touched[earlyoom]=1 ;;
+    etc/systemd/system/ollama.service.d/*) touched[ollama]=1 ;;
   esac
 done < <(find "$ETC_SRC" -type f -print0)
 
@@ -48,6 +49,11 @@ done < <(find "$ETC_SRC" -type f -print0)
 # `|| true` tolerates the unit not being installed yet on a fresh bootstrap
 # (endeavouros-setup.sh installs + enables earlyoom after this runs).
 [ -n "${touched[earlyoom]:-}" ] && { sudo systemctl restart earlyoom || true; }
+# ollama unit drop-in: env (OLLAMA_KEEP_ALIVE) read at start only. daemon-reload
+# picks up the new drop-in, restart applies it. `|| true` tolerates the unit not
+# being installed yet on a fresh bootstrap (endeavouros-setup.sh installs ollama
+# after this may first run).
+[ -n "${touched[ollama]:-}" ] && { sudo systemctl daemon-reload; sudo systemctl restart ollama || true; }
 # sleep.conf: re-read on next suspend, no reload needed.
 # modprobe.d: applies on next module load / reboot.
 

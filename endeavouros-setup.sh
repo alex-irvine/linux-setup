@@ -578,7 +578,32 @@ echo "==== Running claude-setup.sh ===="
 bash "$SCRIPT_DIR/claude-setup.sh"
 
 ###########################################################
-# Claude Code (CLI + hooks + plugins)
+# Ollama (local LLM runtime) + Qwen2.5-Coder
+#
+# Backs opencode's local provider (see dotfiles opencode.jsonc).
+# CPU-only `ollama` pkg: this box is an iGPU-only Radeon 890M
+# (gfx1150) — no dedicated VRAM, and LLM token-gen is memory-
+# bandwidth bound, so iGPU+CPU share the same LPDDR5 bus and the
+# iGPU buys little decode speedup for the ROCm setup pain. Revisit
+# `ollama-rocm` + HSA_OVERRIDE_GFX_VERSION only if prefill on big
+# contexts becomes the bottleneck.
+#
+# OLLAMA_KEEP_ALIVE (unload idle model, caps RAM) is set via the
+# /etc drop-in at etc/systemd/system/ollama.service.d/override.conf,
+# installed by apply-etc.sh near the top of this script.
+###########################################################
+echo "==== Installing Ollama ===="
+sudo pacman -S --noconfirm --needed ollama
+sudo systemctl enable --now ollama
+
+echo "==== Pulling Qwen2.5-Coder model ===="
+OLLAMA_MODEL="qwen2.5-coder:7b"
+if ! ollama list 2>/dev/null | grep -q "$OLLAMA_MODEL"; then
+  ollama pull "$OLLAMA_MODEL"
+fi
+
+###########################################################
+# opencode (AI coding agent)
 ###########################################################
 echo "==== Running opencode-setup.sh ===="
 bash "$SCRIPT_DIR/opencode-setup.sh"
