@@ -24,7 +24,12 @@ ensure_tailscaled_active() {
 
 tailscale_login_state() {
   local status_out
-  status_out="$(tailscale status 2>&1 || true)"
+  if ! status_out="$(tailscale status 2>&1)"; then
+    echo "[tailscale] failed to query tailscale status" >&2
+    echo "[tailscale] status error: $status_out" >&2
+    return 1
+  fi
+
   if [[ "$status_out" == *"Logged out"* ]]; then
     echo "logged_out"
   else
@@ -47,11 +52,17 @@ print_status_summary() {
 }
 
 main() {
+  local login_state
+
   require_cmd tailscale || exit 1
   require_cmd systemctl || exit 1
   ensure_tailscaled_active || exit 1
 
-  if [[ "$(tailscale_login_state)" == "logged_out" ]]; then
+  if ! login_state="$(tailscale_login_state)"; then
+    exit 1
+  fi
+
+  if [[ "$login_state" == "logged_out" ]]; then
     print_login_next_step
     exit 10
   fi
