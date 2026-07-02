@@ -77,3 +77,4 @@ Use Tailscale + SSH to attach to running tmux sessions from mobile without expos
 
 - Host setup and troubleshooting: [TAILSCALE.md](TAILSCALE.md)
 - Mobile requirements are documented there (manual install).
+- Manual smoke flow + verification log template: [TAILSCALE.md](TAILSCALE.md#manual-smoke-test-command-flow)

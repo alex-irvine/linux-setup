@@ -27,6 +27,23 @@
 ## Daily usage
 - SSH in, run `tmxw` (or `tmux attach -t work`).
 
+## Manual smoke test command flow
+1. On host: `bash setup-tailscale.sh`
+2. On phone: connect tailnet in Tailscale app.
+3. On phone SSH client: `ssh <host-tailnet-name>`
+4. In shell: `tmxw work`
+5. Disconnect/reconnect and run: `tmxw work`
+6. Expected: same tmux session resumes.
+
+## Verification log template
+
+- Date:
+- Host:
+- Phone OS/app:
+- Tailnet path: direct or relay
+- Result: pass/fail
+- Notes:
+
 ## Troubleshooting
 - If `tailscaled` not active: `sudo systemctl status tailscaled`.
 - If login missing: `sudo tailscale up --ssh`.
