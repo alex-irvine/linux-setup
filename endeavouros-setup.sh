@@ -13,7 +13,7 @@ sudo pacman -Syu --noconfirm
 echo "==== Installing base tools ===="
 sudo pacman -S --noconfirm --needed \
   base-devel curl wget gnupg ca-certificates unzip clang pkgconf git github-cli \
-  git-delta
+  git-delta tailscale
 
 ###########################################################
 # GitHub CLI auth — must happen BEFORE the dotfiles clone
@@ -619,6 +619,16 @@ bash "$SCRIPT_DIR/opencode-setup.sh"
 ###########################################################
 # VPN setup
 ###########################################################
+echo "==== Running setup-tailscale.sh ===="
+bash "$SCRIPT_DIR/setup-tailscale.sh" || {
+  rc=$?
+  if [ "$rc" -eq 10 ]; then
+    echo "==== Tailscale manual login required; re-run setup-tailscale.sh after login ===="
+  else
+    exit "$rc"
+  fi
+}
+
 echo "==== Running setup-vpn.sh ===="
 bash "$SCRIPT_DIR/setup-vpn.sh"
 
