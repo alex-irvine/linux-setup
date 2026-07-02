@@ -14,6 +14,8 @@ README_CONTENT="$(cat "$README")"
 [[ "$TAIL_CONTENT" == *"Tailscale"* ]] || { echo "FAIL: missing Tailscale app mention"; exit 1; }
 [[ "$TAIL_CONTENT" == *"SSH"* ]] || { echo "FAIL: missing SSH app mention"; exit 1; }
 [[ "$TAIL_CONTENT" == *"## Lost device response"* ]] || { echo "FAIL: missing lost-device section"; exit 1; }
+[[ "$TAIL_CONTENT" == *"Preferred auth posture: Tailscale SSH policy-managed access."* ]] || { echo "FAIL: missing preferred auth posture"; exit 1; }
+[[ "$TAIL_CONTENT" == *"Fallback: OpenSSH over tailnet with key-based auth only."* ]] || { echo "FAIL: missing OpenSSH fallback posture"; exit 1; }
 [[ "$README_CONTENT" == *"Remote tmux via Tailscale"* ]] || { echo "FAIL: README missing remote tmux section"; exit 1; }
 [[ "$README_CONTENT" == *"TAILSCALE.md"* ]] || { echo "FAIL: README missing TAILSCALE.md link"; exit 1; }
 

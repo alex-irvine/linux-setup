@@ -4,6 +4,10 @@
 - Private tailnet path to SSH into this host from mobile.
 - Reuse existing local tmux sessions.
 
+## Authentication posture
+- Preferred auth posture: Tailscale SSH policy-managed access.
+- Fallback: OpenSSH over tailnet with key-based auth only.
+
 ## Host setup
 1. Run `bash setup-tailscale.sh`.
 2. If prompted, run `sudo tailscale up --ssh`.
