@@ -17,6 +17,12 @@ assert_contains() {
 test_missing_tailscale_binary() {
   local fakebin
   fakebin="$(mktemp -d)"
+  trap 'rm -rf "$fakebin"' RETURN
+  local real_bash
+  real_bash="$(command -v bash)"
+
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$real_bash" >"$fakebin/bash"
+  chmod +x "$fakebin/bash"
 
   cat >"$fakebin/systemctl" <<'EOF'
 #!/usr/bin/env bash
@@ -26,7 +32,7 @@ EOF
 
   set +e
   local output
-  output="$(PATH="$fakebin" "$SUT" 2>&1)"
+  output="$(PATH="$fakebin" bash "$SUT" 2>&1)"
   local exit_code=$?
   set -e
 
