@@ -16,7 +16,13 @@ README_CONTENT="$(cat "$README")"
 [[ "$TAIL_CONTENT" == *"## Lost device response"* ]] || { echo "FAIL: missing lost-device section"; exit 1; }
 [[ "$TAIL_CONTENT" == *"Preferred auth posture: Tailscale SSH policy-managed access."* ]] || { echo "FAIL: missing preferred auth posture"; exit 1; }
 [[ "$TAIL_CONTENT" == *"Fallback: OpenSSH over tailnet with key-based auth only."* ]] || { echo "FAIL: missing OpenSSH fallback posture"; exit 1; }
+[[ "$TAIL_CONTENT" == *"Host: <redacted-tailnet-host>"* ]] || { echo "FAIL: verification log host not sanitized"; exit 1; }
 [[ "$README_CONTENT" == *"Remote tmux via Tailscale"* ]] || { echo "FAIL: README missing remote tmux section"; exit 1; }
 [[ "$README_CONTENT" == *"TAILSCALE.md"* ]] || { echo "FAIL: README missing TAILSCALE.md link"; exit 1; }
+
+if printf '%s\n' "$TAIL_CONTENT" | grep -Eq '([0-9]{1,3}\.){3}[0-9]{1,3}'; then
+  echo "FAIL: TAILSCALE.md contains concrete IPv4 metadata"
+  exit 1
+fi
 
 echo "PASS: docs contract checks"

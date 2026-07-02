@@ -47,11 +47,11 @@
 ## Verification log
 
 - Date: 2026-07-02
-- Host: 100.121.139.50 (host tailnet)
-- Phone OS/app: unspecified by user
-- Tailnet path: unknown
+- Host: <redacted-tailnet-host>
+- Phone OS/app: manual smoke device/app recorded privately
+- Tailnet path: redacted
 - Result: pass
-- Notes: manual mobile SSH smoke succeeded, no password prompt (Tailscale SSH auth path), tmux remote workflow works.
+- Notes: manual mobile SSH smoke succeeded; policy-managed SSH path and tmux reconnect workflow verified.
 
 ## Troubleshooting
 - If `tailscaled` not active: `sudo systemctl status tailscaled`.
