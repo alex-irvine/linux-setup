@@ -70,3 +70,10 @@ All Claude config lives in `~/dotfiles/claude/`. Stowing creates:
 
 Plugins + marketplaces re-installed by `claude-setup.sh` from `settings.json`.
 Credentials (`~/.claude/.credentials.json`) + session jsonl stay local — never tracked.
+
+## Remote tmux via Tailscale
+
+Use Tailscale + SSH to attach to running tmux sessions from mobile without exposing public terminal endpoints.
+
+- Host setup and troubleshooting: [TAILSCALE.md](TAILSCALE.md)
+- Mobile requirements are documented there (manual install).
