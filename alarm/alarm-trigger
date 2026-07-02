@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ALARM_ID="${1:-unknown}"
+FIRE_TIME="${2:-unknown-time}"
+LABEL="${3:-Alarm}"
+
+DATA_DIR="${ALARM_DATA_DIR:-$HOME/.local/share/alarm-cli}"
+LOG_FILE="$DATA_DIR/alarm.log"
+
+mkdir -p "$DATA_DIR"
+touch "$LOG_FILE"
+
+log_msg() {
+  printf '%s [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$ALARM_ID" "$1" >>"$LOG_FILE"
+}
+
+prepare_desktop_env() {
+  local uid runtime_dir
+  uid="$(id -u)"
+  runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$uid}"
+
+  export XDG_RUNTIME_DIR="$runtime_dir"
+
+  if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" && -S "$runtime_dir/bus" ]]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+  fi
+}
+
+try_play_sound() {
+  local sound_file="/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
+
+  if command -v paplay >/dev/null 2>&1 && [[ -f "$sound_file" ]]; then
+    if paplay "$sound_file" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  if command -v pw-play >/dev/null 2>&1 && [[ -f "$sound_file" ]]; then
+    if pw-play "$sound_file" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  if command -v canberra-gtk-play >/dev/null 2>&1; then
+    if canberra-gtk-play -i alarm-clock-elapsed -d alarm-cli >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+send_notification() {
+  local title body
+  title="Alarm: $LABEL"
+  body="Scheduled for $FIRE_TIME (id: $ALARM_ID)"
+
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "$title" "$body"
+    return 0
+  fi
+
+  return 1
+}
+
+main() {
+  prepare_desktop_env
+
+  if ! send_notification; then
+    log_msg "notification failed"
+  fi
+
+  if ! try_play_sound; then
+    log_msg "sound playback failed"
+  fi
+}
+
+main "$@"

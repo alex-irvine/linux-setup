@@ -77,4 +77,23 @@ Use Tailscale + SSH to attach to running tmux sessions from mobile without expos
 
 - Host setup and troubleshooting: [TAILSCALE.md](TAILSCALE.md)
 - Mobile requirements are documented there (manual install).
-- Manual smoke flow + verification log template: [TAILSCALE.md](TAILSCALE.md#manual-smoke-test-command-flow)
+- Manual smoke flow: [TAILSCALE.md](TAILSCALE.md#manual-smoke-test-command-flow)
+- Verification log template: [TAILSCALE.md](TAILSCALE.md#verification-log-template)
+
+## Alarm CLI
+
+Installed by `endeavouros-setup.sh` to `~/.local/bin/alarm` via `alarm/install-alarm.sh`.
+
+Commands:
+
+```sh
+alarm add "2026-07-03 07:30" "Gym"
+alarm add --in 45m "Tea"
+alarm list
+alarm delete <alarm-id>
+```
+
+Runtime notes:
+- one-shot alarms only,
+- desktop session notifications (`notify-send`) + notification sound on fire,
+- data stored in `~/.local/share/alarm-cli/alarms.tsv`.

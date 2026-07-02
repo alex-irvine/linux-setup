@@ -617,6 +617,12 @@ echo "==== Running opencode-setup.sh ===="
 bash "$SCRIPT_DIR/opencode-setup.sh"
 
 ###########################################################
+# alarm CLI
+###########################################################
+echo "==== Installing alarm CLI ===="
+bash "$SCRIPT_DIR/alarm/install-alarm.sh"
+
+###########################################################
 # VPN setup
 ###########################################################
 echo "==== Running setup-tailscale.sh ===="

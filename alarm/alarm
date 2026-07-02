@@ -1,0 +1,290 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DATA_DIR="${ALARM_DATA_DIR:-$HOME/.local/share/alarm-cli}"
+STORE_FILE="$DATA_DIR/alarms.tsv"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TRIGGER_PATH="${ALARM_TRIGGER_PATH:-$SCRIPT_DIR/alarm-trigger}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  alarm add "YYYY-MM-DD HH:MM" [label]
+  alarm add --in <duration> [label]
+  alarm list
+  alarm delete <alarm-id>
+
+Examples:
+  alarm add "2026-07-03 07:30" "Gym"
+  alarm add --in 45m "Tea"
+EOF
+}
+
+input_error() {
+  printf '[alarm] %s\n' "$1" >&2
+  usage >&2
+  exit 2
+}
+
+runtime_error() {
+  printf '[alarm] %s\n' "$1" >&2
+  exit 1
+}
+
+require_cmd() {
+  local cmd="$1"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    runtime_error "missing required command: $cmd"
+  fi
+}
+
+init_store() {
+  mkdir -p "$DATA_DIR"
+  touch "$STORE_FILE"
+}
+
+sanitize_label() {
+  local label="$1"
+  label="${label//$'\t'/ }"
+  label="${label//$'\n'/ }"
+  if [[ -z "$label" ]]; then
+    label="Alarm"
+  fi
+  printf '%s' "$label"
+}
+
+next_alarm_id() {
+  local max_id=0
+  local alarm_id
+
+  while IFS=$'\t' read -r alarm_id _; do
+    [[ -n "$alarm_id" ]] || continue
+    [[ "$alarm_id" =~ ^[0-9]+$ ]] || continue
+    if (( alarm_id > max_id )); then
+      max_id=$alarm_id
+    fi
+  done <"$STORE_FILE"
+
+  printf '%s\n' "$((max_id + 1))"
+}
+
+parse_absolute_time() {
+  local input="$1"
+  local epoch
+  local at_time
+  local display_time
+
+  if ! epoch="$(date -d "$input" +%s 2>/dev/null)"; then
+    return 1
+  fi
+
+  at_time="$(date -d "@$epoch" +%Y%m%d%H%M)"
+  display_time="$(date -d "@$epoch" '+%Y-%m-%d %H:%M')"
+  printf '%s\t%s\n' "$at_time" "$display_time"
+}
+
+parse_relative_time() {
+  local duration="$1"
+  local value unit date_expr
+  local epoch at_time display_time
+
+  if [[ ! "$duration" =~ ^([0-9]+)([mhd])$ ]]; then
+    return 1
+  fi
+
+  value="${BASH_REMATCH[1]}"
+  unit="${BASH_REMATCH[2]}"
+
+  case "$unit" in
+    m) date_expr="now + $value minutes" ;;
+    h) date_expr="now + $value hours" ;;
+    d) date_expr="now + $value days" ;;
+    *) return 1 ;;
+  esac
+
+  if ! epoch="$(date -d "$date_expr" +%s 2>/dev/null)"; then
+    return 1
+  fi
+
+  at_time="$(date -d "@$epoch" +%Y%m%d%H%M)"
+  display_time="$(date -d "@$epoch" '+%Y-%m-%d %H:%M')"
+  printf '%s\t%s\n' "$at_time" "$display_time"
+}
+
+schedule_job() {
+  local at_time="$1"
+  local alarm_id="$2"
+  local fire_time="$3"
+  local label="$4"
+  local at_output job_id
+  local command_line
+
+  command_line="$(printf '%q ' "$TRIGGER_PATH" "$alarm_id" "$fire_time" "$label")"
+
+  if ! at_output="$(printf '%s\n' "$command_line" | at -t "$at_time" 2>&1)"; then
+    printf '[alarm] failed to schedule alarm\n%s\n' "$at_output" >&2
+    return 1
+  fi
+
+  if [[ "$at_output" =~ job[[:space:]]+([0-9]+) ]]; then
+    job_id="${BASH_REMATCH[1]}"
+    printf '%s\n' "$job_id"
+    return 0
+  fi
+
+  printf '[alarm] failed to parse scheduler job id\n%s\n' "$at_output" >&2
+  return 1
+}
+
+add_alarm() {
+  local mode="$1"
+  shift
+
+  local at_time fire_time label_input label parsed
+  local alarm_id job_id
+
+  case "$mode" in
+    absolute)
+      if [[ $# -lt 1 ]]; then
+        input_error "missing datetime"
+      fi
+      parsed="$(parse_absolute_time "$1")" || input_error "invalid datetime: $1"
+      shift
+      ;;
+    relative)
+      if [[ $# -lt 1 ]]; then
+        input_error "missing duration"
+      fi
+      parsed="$(parse_relative_time "$1")" || input_error "invalid duration: $1 (use e.g. 45m, 2h, 1d)"
+      shift
+      ;;
+    *)
+      runtime_error "unknown add mode: $mode"
+      ;;
+  esac
+
+  at_time="${parsed%%$'\t'*}"
+  fire_time="${parsed#*$'\t'}"
+
+  label_input="${*:-Alarm}"
+  label="$(sanitize_label "$label_input")"
+
+  alarm_id="$(next_alarm_id)"
+  if ! job_id="$(schedule_job "$at_time" "$alarm_id" "$fire_time" "$label")"; then
+    exit 1
+  fi
+
+  printf '%s\t%s\t%s\t%s\n' "$alarm_id" "$job_id" "$fire_time" "$label" >>"$STORE_FILE"
+  printf 'added alarm %s at %s (%s)\n' "$alarm_id" "$fire_time" "$label"
+}
+
+job_exists() {
+  local job_id="$1"
+  local atq_output="$2"
+  printf '%s\n' "$atq_output" | grep -Eq "^${job_id}[[:space:]]"
+}
+
+list_alarms() {
+  local atq_output
+  local count=0
+  local alarm_id job_id fire_time label status
+
+  atq_output="$(atq 2>/dev/null || true)"
+
+  printf 'id\twhen\tlabel\tjob\tstatus\n'
+  while IFS=$'\t' read -r alarm_id job_id fire_time label; do
+    [[ -n "$alarm_id" ]] || continue
+    count=$((count + 1))
+    status="stale"
+    if job_exists "$job_id" "$atq_output"; then
+      status="scheduled"
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\n' "$alarm_id" "$fire_time" "$label" "$job_id" "$status"
+  done <"$STORE_FILE"
+
+  if (( count == 0 )); then
+    printf 'no alarms\n'
+  fi
+}
+
+delete_alarm() {
+  local alarm_id="$1"
+  local temp_file found=0
+  local row_alarm_id row_job_id row_fire_time row_label
+  local target_job_id=""
+
+  if [[ ! "$alarm_id" =~ ^[0-9]+$ ]]; then
+    input_error "alarm id must be numeric"
+  fi
+
+  temp_file="$(mktemp)"
+  while IFS=$'\t' read -r row_alarm_id row_job_id row_fire_time row_label; do
+    [[ -n "$row_alarm_id" ]] || continue
+    if [[ "$row_alarm_id" == "$alarm_id" ]]; then
+      found=1
+      target_job_id="$row_job_id"
+      continue
+    fi
+    printf '%s\t%s\t%s\t%s\n' "$row_alarm_id" "$row_job_id" "$row_fire_time" "$row_label" >>"$temp_file"
+  done <"$STORE_FILE"
+
+  if (( found == 0 )); then
+    rm -f "$temp_file"
+    input_error "unknown alarm id: $alarm_id (run 'alarm list')"
+  fi
+
+  if ! atrm "$target_job_id" >/dev/null 2>&1; then
+    printf '[alarm] warning: scheduler job %s already missing; removed metadata anyway\n' "$target_job_id" >&2
+  fi
+
+  mv "$temp_file" "$STORE_FILE"
+  printf 'deleted alarm %s\n' "$alarm_id"
+}
+
+main() {
+  init_store
+
+  require_cmd at
+  require_cmd atq
+  require_cmd atrm
+  require_cmd date
+
+  if [[ $# -lt 1 ]]; then
+    usage >&2
+    exit 2
+  fi
+
+  case "$1" in
+    add)
+      shift
+      if [[ ${1:-} == "--in" ]]; then
+        shift
+        add_alarm relative "$@"
+      else
+        add_alarm absolute "$@"
+      fi
+      ;;
+    list)
+      shift
+      if [[ $# -ne 0 ]]; then
+        input_error "list does not take arguments"
+      fi
+      list_alarms
+      ;;
+    delete)
+      shift
+      if [[ $# -ne 1 ]]; then
+        input_error "delete requires exactly one alarm id"
+      fi
+      delete_alarm "$1"
+      ;;
+    -h|--help|help)
+      usage
+      ;;
+    *)
+      input_error "unknown command: $1"
+      ;;
+  esac
+}
+
+main "$@"
