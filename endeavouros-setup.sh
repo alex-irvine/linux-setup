@@ -13,7 +13,7 @@ sudo pacman -Syu --noconfirm
 echo "==== Installing base tools ===="
 sudo pacman -S --noconfirm --needed \
   base-devel curl wget gnupg ca-certificates unzip clang pkgconf git github-cli \
-  git-delta tailscale
+  git-delta tailscale fzf
 
 ###########################################################
 # GitHub CLI auth — must happen BEFORE the dotfiles clone
