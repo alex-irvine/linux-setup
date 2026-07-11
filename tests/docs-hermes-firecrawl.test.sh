@@ -15,6 +15,11 @@ CONTENT="$(cat "$README_FILE")"
   exit 1
 }
 
+[[ "$CONTENT" != *"~/.hermes/scripts/restore-hermes.sh"* ]] || {
+  echo "FAIL: README still references old stow-owned restore command"
+  exit 1
+}
+
 [[ "$CONTENT" == *"same-host"* ]] || {
   echo "FAIL: README missing same-host auto-restore policy"
   exit 1

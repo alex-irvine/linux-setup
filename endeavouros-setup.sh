@@ -666,7 +666,7 @@ Run this once after setup:
   rclone config
   rclone lsd gdrive:
 Then restore old Hermes backup (if any), and resume job:
-  ~/.hermes/scripts/restore-hermes.sh
+  ~/Proj/linux-setup/restore-hermes.sh
 RCLONE_HELP
   fi
 fi

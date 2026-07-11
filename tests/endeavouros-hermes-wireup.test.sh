@@ -15,6 +15,16 @@ CONTENT="$(cat "$FILE")"
   exit 1
 }
 
+[[ "$CONTENT" == *'~/Proj/linux-setup/restore-hermes.sh'* ]] || {
+  echo "FAIL: missing setup-owned restore command helper text"
+  exit 1
+}
+
+[[ "$CONTENT" != *'~/.hermes/scripts/restore-hermes.sh'* ]] || {
+  echo "FAIL: still references old stow-owned restore command in helper text"
+  exit 1
+}
+
 if printf '%s\n' "$CONTENT" | grep -Eq 'stow --target="\$HOME" --restow .* hermes '; then
   echo "FAIL: hermes still included in initial broad stow list"
   exit 1

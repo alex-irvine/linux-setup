@@ -18,6 +18,18 @@ mk_fakebin_auto_same_host() {
   local fakebin="$1"
   cat >"$fakebin/hermes" <<'EOF'
 #!/usr/bin/env bash
+if [[ "$1" == "cron" && "$2" == "list" && "$3" == "--all" ]]; then
+  cat <<'CRON'
+ID:        cron-123
+Name:      hermes-backup-gdrive
+Paused:    true
+CRON
+  exit 0
+fi
+if [[ "$1" == "cron" && "$2" == "resume" && "$3" == "cron-123" ]]; then
+  echo "hermes cron resume called: $*" >>"$TEST_LOG"
+  exit 0
+fi
 echo "hermes import called: $*" >>"$TEST_LOG"
 exit 0
 EOF
@@ -100,6 +112,7 @@ test_auto_same_host_restore() {
   [[ $rc -eq 0 ]]
   assert_contains "$output" "Selected archive: gdrive:hermes-backups/test-host/hermes-20260711T010000Z.zip"
   assert_contains "$(cat "$TEST_LOG")" "hermes import called"
+  assert_contains "$(cat "$TEST_LOG")" "hermes cron resume called"
 }
 
 test_prompt_cross_host_restore() {

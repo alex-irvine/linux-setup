@@ -60,7 +60,14 @@ main() {
   fi
   mv "$FIRECRAWL_DIR/.env.tmp" "$FIRECRAWL_DIR/.env"
 
-  (cd "$FIRECRAWL_DIR" && docker compose up -d)
+  if (cd "$FIRECRAWL_DIR" && docker compose up -d); then
+    :
+  else
+    rc=$?
+    err "failed to start Firecrawl docker compose stack"
+    err "run: cd \"$FIRECRAWL_DIR\" && docker compose logs"
+    exit "$rc"
+  fi
 
   if [[ -x "$RESTORE_SCRIPT" ]]; then
     "$RESTORE_SCRIPT" --yes

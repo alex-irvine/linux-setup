@@ -78,6 +78,42 @@ EOF
   assert_contains "$output" "Hermes + Firecrawl setup complete"
 }
 
+test_compose_failure_prints_logs_remediation() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  mkdir -p "$tmp/bin" "$tmp/firecrawl"
+
+  cat >"$tmp/bin/hermes" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  cat >"$tmp/bin/docker" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "compose" && "$2" == "up" && "$3" == "-d" ]]; then
+  exit 42
+fi
+exit 0
+EOF
+  cat >"$tmp/restore-hermes.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "restore should not be called"
+exit 1
+EOF
+  chmod +x "$tmp/bin/hermes" "$tmp/bin/docker" "$tmp/restore-hermes.sh"
+
+  set +e
+  output="$(PATH="$tmp/bin:$PATH" FIRECRAWL_DIR="$tmp/firecrawl" RESTORE_SCRIPT="$tmp/restore-hermes.sh" "$SUT" 2>&1)"
+  rc=$?
+  set -e
+
+  [[ $rc -eq 42 ]]
+  assert_contains "$output" "failed to start Firecrawl docker compose stack"
+  assert_contains "$output" "cd \"$tmp/firecrawl\" && docker compose logs"
+}
+
 test_missing_firecrawl_repo_fails
 test_writes_required_env_keys_and_calls_restore
+test_compose_failure_prints_logs_remediation
 echo "PASS: hermes-setup contract tests"
