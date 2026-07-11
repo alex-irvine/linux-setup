@@ -19,7 +19,8 @@ Sudo password cached for pacman/yay.
 
 1. pacman base tools + `github-cli` → `gh auth login` (gates dotfiles clone).
 2. Clones `~/dotfiles` and stows every package (sway, foot, mako, nvim,
-   tmux, tmuxinator, waybar, zsh, gtk, systemd, **claude**).
+   tmux, tmuxinator, waybar, zsh, gtk, systemd, git, k9s, lazygit,
+   **claude**, **opencode**, **hermes**).
 3. Installs apps + CLIs: yay, Go, Node, Neovim, Nerd Fonts, Rust,
    tree-sitter, Oh My Zsh, tmux + tpm, Chrome, Docker, kubectl, helm,
    k9s, flux, bottom, earlyoom, Evolution + ews, git/gh, lazygit, tig,
@@ -27,8 +28,36 @@ Sudo password cached for pacman/yay.
 4. Pulls private `lazyorc` + `lazyfleet` releases via gh.
 5. Runs `claude-setup.sh` — installs Claude Code CLI, rtk, marketplaces
    (caveman, claude-plugins-official, claude-hud), plugins.
-6. Runs `setup-vpn.sh` — imports the OpenVPN profile into NetworkManager
+6. Runs hermes-setup.sh (Hermes install, Firecrawl self-host bring-up,
+   restore bootstrap).
+7. Bootstraps Hermes backup job (`hermes-backup-gdrive`) in paused mode,
+   then resumes after restore when appropriate.
+8. Runs `setup-vpn.sh` — imports the OpenVPN profile into NetworkManager
    (only if you've placed it locally — see VPN below).
+
+## Hermes backup (Google Drive)
+
+Bootstrap installs `rclone`, stows Hermes config/scripts, and creates a paused
+`hermes-backup-gdrive` cron job.
+
+First-run activation:
+
+```sh
+rclone config
+rclone lsd gdrive:
+~/Proj/linux-setup/restore-hermes.sh
+```
+
+Restore policy during bootstrap:
+- auto-restore latest backup from same-host path when present,
+- prompt only when same-host path is empty and other host folders exist.
+
+Why paused by default: avoids creating a fresh backup that could overwrite your
+intended restore order before you reconnect Google Drive and import previous
+state.
+
+`restore-hermes.sh` restores the latest archive and resumes the paused backup
+cron job automatically.
 
 Idempotent. Re-run safe.
 
