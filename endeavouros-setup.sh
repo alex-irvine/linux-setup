@@ -41,7 +41,7 @@ fi
 sudo pacman -S --noconfirm --needed \
   sway waybar wofi foot mako swaylock swayidle xorg-xwayland \
   wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
-  bluez bluez-utils network-manager-applet pulsemixer stow \
+  bluez bluez-utils network-manager-applet pulsemixer stow rclone \
   grim slurp satty task swaybg
 
 ###########################################################
@@ -83,7 +83,7 @@ done
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow claude evolution foot gtk mako nvim sway systemd task tmux tmuxinator triage waybar zsh
+stow --target="$HOME" --restow claude evolution foot git gtk k9s lazygit mako nvim opencode sway systemd task tmux tmuxinator triage waybar zsh
 cd -
 
 echo "==== Setting dark color-scheme (dconf) ===="
@@ -615,6 +615,61 @@ done
 ###########################################################
 echo "==== Running opencode-setup.sh ===="
 bash "$SCRIPT_DIR/opencode-setup.sh"
+
+echo "==== Running hermes-setup.sh ===="
+bash "$SCRIPT_DIR/hermes-setup.sh"
+
+echo "==== Restowing hermes config ===="
+cd ~/dotfiles
+stow --target="$HOME" --restow hermes
+cd -
+
+###########################################################
+# Hermes backup bootstrap (official backup + cron)
+#
+# - Uses stowed script: ~/.hermes/scripts/hermes-backup-gdrive.sh
+# - Creates cron job once, then pauses it until user configures
+#   rclone Google Drive remote + restores any prior backup state.
+###########################################################
+echo "==== Hermes backup bootstrap ===="
+if command -v hermes >/dev/null 2>&1; then
+  if ! hermes cron list --all 2>/dev/null | grep -q "Name:      hermes-backup-gdrive"; then
+    hermes cron create "0 3 * * *" \
+      --name "hermes-backup-gdrive" \
+      --script "hermes-backup-gdrive.sh" \
+      --no-agent || true
+
+    JOB_ID="$(python3 - <<'PY' || true
+import json
+import pathlib
+
+jobs_file = pathlib.Path.home() / ".hermes" / "cron" / "jobs.json"
+if not jobs_file.exists():
+    raise SystemExit(0)
+data = json.loads(jobs_file.read_text())
+for job in data.get("jobs", []):
+    if job.get("name") == "hermes-backup-gdrive":
+        print(job.get("id", ""))
+        break
+PY
+)"
+    if [ -n "$JOB_ID" ]; then
+      hermes cron pause "$JOB_ID" || true
+      echo "Created Hermes backup cron job ($JOB_ID) and paused it."
+    fi
+  fi
+
+  if ! rclone listremotes 2>/dev/null | grep -qx "gdrive:"; then
+    cat <<'RCLONE_HELP'
+Hermes backup remote not configured yet.
+Run this once after setup:
+  rclone config
+  rclone lsd gdrive:
+Then restore old Hermes backup (if any), and resume job:
+  ~/.hermes/scripts/restore-hermes.sh
+RCLONE_HELP
+  fi
+fi
 
 ###########################################################
 # alarm CLI
