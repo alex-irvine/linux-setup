@@ -29,6 +29,9 @@ clone_or_pull https://github.com/alex-irvine/dotfiles.git ~/dotfiles
 echo "==== Cloning .triage ===="
 clone_or_pull https://github.com/alex-irvine/.triage.git ~/Proj/.triage
 
+echo "==== Cloning Firecrawl ===="
+clone_or_pull https://github.com/firecrawl/firecrawl.git ~/Proj/firecrawl
+
 echo "==== Cloning tmux plugins ===="
 clone_or_pull https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 clone_or_pull https://github.com/tmux-plugins/tmux-yank ~/.tmux/plugins/tmux-yank
