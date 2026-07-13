@@ -13,7 +13,7 @@ sudo pacman -Syu --noconfirm
 echo "==== Installing base tools ===="
 sudo pacman -S --noconfirm --needed \
   base-devel curl wget gnupg ca-certificates unzip clang pkgconf git github-cli \
-  git-delta tailscale fzf
+  git-delta tailscale fzf doxx
 
 ###########################################################
 # GitHub CLI auth — must happen BEFORE the dotfiles clone
@@ -106,7 +106,7 @@ fi
 # yay utils
 ###########################################################
 echo "==== Installing yay utils ===="
-yay -S --noconfirm --needed bluetuith wl-clip-persist
+yay -S --noconfirm --needed bluetuith wl-clip-persist xleak-bin
 
 ###########################################################
 # Golang
@@ -639,7 +639,8 @@ if command -v hermes >/dev/null 2>&1; then
       --script "hermes-backup-gdrive.sh" \
       --no-agent || true
 
-    JOB_ID="$(python3 - <<'PY' || true
+    JOB_ID="$(
+      python3 - <<'PY' || true
 import json
 import pathlib
 
@@ -652,7 +653,7 @@ for job in data.get("jobs", []):
         print(job.get("id", ""))
         break
 PY
-)"
+    )"
     if [ -n "$JOB_ID" ]; then
       hermes cron pause "$JOB_ID" || true
       echo "Created Hermes backup cron job ($JOB_ID) and paused it."
