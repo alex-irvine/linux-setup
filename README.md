@@ -1,6 +1,12 @@
 # linux-setup
 
-Fresh OS bootstrap. EndeavourOS/Arch host.
+Fresh OS bootstrap for an EndeavourOS/Arch host.
+
+## Repository scope
+
+This repository owns application installation and base operating-system configuration: pacman/yay packages, system services, `/etc` configuration, hardware/network setup, and bootstrap scripts.
+
+It does not own user configuration, shell aliases, application dotfiles, Hermes skills, or user workflow scripts. Those belong in the GNU Stow repository at `~/dotfiles`. Application and project repositories belong under `~/Proj`; runtime state and secrets stay untracked in their owning runtime directories.
 
 ## Run
 
