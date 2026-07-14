@@ -619,9 +619,11 @@ bash "$SCRIPT_DIR/opencode-setup.sh"
 echo "==== Running hermes-setup.sh ===="
 bash "$SCRIPT_DIR/hermes-setup.sh"
 
-echo "==== Restowing hermes config ===="
+echo "==== Restowing Hermes dotfiles (config, scripts, skills) ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow hermes
+# Keep target directories real so generated sidecars (for example Python
+# __pycache__) stay in $HOME rather than appearing in the dotfiles source.
+stow --no-folding --target="$HOME" --restow hermes
 cd -
 
 ###########################################################

@@ -10,8 +10,13 @@ CONTENT="$(cat "$FILE")"
   exit 1
 }
 
-[[ "$CONTENT" == *'stow --target="$HOME" --restow hermes'* ]] || {
-  echo "FAIL: missing final hermes restow"
+[[ "$CONTENT" == *'stow --no-folding --target="$HOME" --restow hermes'* ]] || {
+  echo "FAIL: missing non-folding final hermes restow"
+  exit 1
+}
+
+[[ "$CONTENT" == *'echo "==== Restowing Hermes dotfiles (config, scripts, skills) ===="'* ]] || {
+  echo "FAIL: Hermes restow does not document skills coverage"
   exit 1
 }
 
