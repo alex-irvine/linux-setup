@@ -83,7 +83,7 @@ done
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow claude evolution foot git gtk k9s lazygit mako nvim opencode sway systemd task tmux tmuxinator triage waybar zsh
+stow --target="$HOME" --restow claude evolution foot git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator triage waybar zsh
 cd -
 
 echo "==== Setting dark color-scheme (dconf) ===="
