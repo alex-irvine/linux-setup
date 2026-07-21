@@ -583,51 +583,31 @@ else
 fi
 
 ###########################################################
-# Hermes backup bootstrap (official backup + cron)
+# Hermes backup (systemd user timer)
 #
-# - Uses stowed script: ~/.hermes/scripts/hermes-backup-gdrive.sh
-# - Creates cron job once, then pauses it until user configures
-#   rclone Google Drive remote + restores any prior backup state.
+# Persistent daily timer runs ~/.hermes/scripts/hermes-backup-gdrive.sh (a real
+# file installed by agent-lib/install.sh). Persistent=true catches up missed
+# runs after suspend/resume — this laptop is usually suspended at the 03:00
+# target, and hermes' own cron has no catch-up. Units are stowed from the
+# dotfiles `systemd` package; here we ensure lingering + enable the timer.
+# Runs after the restore step (in hermes-setup.sh) so a fresh empty snapshot
+# cannot overwrite prior remote state before a restore.
 ###########################################################
-echo "==== Hermes backup bootstrap ===="
-if command -v hermes >/dev/null 2>&1; then
-  if ! hermes cron list --all 2>/dev/null | grep -q "Name:      hermes-backup-gdrive"; then
-    hermes cron create "0 3 * * *" \
-      --name "hermes-backup-gdrive" \
-      --script "hermes-backup-gdrive.sh" \
-      --no-agent || true
+echo "==== Hermes backup timer ===="
+# User timers must run without an active login session (lid closed / suspended).
+sudo loginctl enable-linger "$USER" || true
+systemctl --user daemon-reload || true
+systemctl --user enable --now hermes-backup.timer || true
+systemctl --user list-timers hermes-backup.timer --all || true
 
-    JOB_ID="$(
-      python3 - <<'PY' || true
-import json
-import pathlib
-
-jobs_file = pathlib.Path.home() / ".hermes" / "cron" / "jobs.json"
-if not jobs_file.exists():
-    raise SystemExit(0)
-data = json.loads(jobs_file.read_text())
-for job in data.get("jobs", []):
-    if job.get("name") == "hermes-backup-gdrive":
-        print(job.get("id", ""))
-        break
-PY
-    )"
-    if [ -n "$JOB_ID" ]; then
-      hermes cron pause "$JOB_ID" || true
-      echo "Created Hermes backup cron job ($JOB_ID) and paused it."
-    fi
-  fi
-
-  if ! rclone listremotes 2>/dev/null | grep -qx "gdrive:"; then
-    cat <<'RCLONE_HELP'
-Hermes backup remote not configured yet.
-Run this once after setup:
+if ! rclone listremotes 2>/dev/null | grep -qx "gdrive:"; then
+  cat <<'RCLONE_HELP'
+Hermes backup remote not configured yet. Run once after setup:
   rclone config
   rclone lsd gdrive:
-Then restore old Hermes backup (if any), and resume job:
+Then restore any prior backup (this also enables the timer):
   ~/Proj/linux-setup/restore-hermes.sh
 RCLONE_HELP
-  fi
 fi
 
 ###########################################################

@@ -35,16 +35,21 @@ Sudo password cached for pacman/yay.
 5. Runs `claude-setup.sh` — installs Claude Code CLI, rtk, marketplaces
    (caveman, claude-plugins-official, claude-hud), plugins.
 6. Runs hermes-setup.sh (Hermes install, Firecrawl self-host bring-up,
-   restore bootstrap).
-7. Bootstraps Hermes backup job (`hermes-backup-gdrive`) in paused mode,
-   then resumes after restore when appropriate.
+   product-operations venv build, restore bootstrap).
+7. Enables the persistent `hermes-backup.timer` (systemd user timer) for daily
+   Google Drive backups; catches up after suspend/resume.
 8. Runs `setup-vpn.sh` — imports the OpenVPN profile into NetworkManager
    (only if you've placed it locally — see VPN below).
 
 ## Hermes backup (Google Drive)
 
-Bootstrap installs `rclone`, stows Hermes config/scripts, and creates a paused
-`hermes-backup-gdrive` cron job.
+Backups run via a **systemd user timer** (`hermes-backup.timer`, stowed from the
+dotfiles `systemd` package) that runs `~/.hermes/scripts/hermes-backup-gdrive.sh`
+daily at 03:00. `Persistent=true` means a run missed while the laptop is
+suspended/off fires shortly after the next resume — so a machine asleep at 3am
+still gets backed up. Lingering is enabled so it runs without an active session.
+(The backup script itself is copied, not symlinked, into `~/.hermes/scripts` by
+`agent-lib/install.sh` — Hermes sandboxes cron scripts to that directory.)
 
 First-run activation:
 
@@ -58,12 +63,11 @@ Restore policy during bootstrap:
 - auto-restore latest backup from same-host path when present,
 - prompt only when same-host path is empty and other host folders exist.
 
-Why paused by default: avoids creating a fresh backup that could overwrite your
-intended restore order before you reconnect Google Drive and import previous
-state.
+The timer is enabled after the restore step so a fresh empty snapshot cannot
+overwrite prior remote state before you import a previous backup.
 
-`restore-hermes.sh` restores the latest archive and resumes the paused backup
-cron job automatically.
+`restore-hermes.sh` restores the latest archive and enables the backup timer
+automatically.
 
 Idempotent. Re-run safe.
 

@@ -33,53 +33,20 @@ require_cmd() {
   }
 }
 
-trim_ws() {
-  local v="$1"
-  v="${v#"${v%%[![:space:]]*}"}"
-  v="${v%"${v##*[![:space:]]}"}"
-  printf '%s' "$v"
-}
-
-resume_backup_cron_if_paused() {
-  local list_output
-  if ! list_output="$(hermes cron list --all 2>/dev/null)"; then
-    log "could not inspect Hermes cron jobs; skipping cron resume"
+enable_backup_timer() {
+  # A systemd user timer owns backup scheduling (persistent; catches up after
+  # suspend/resume). Enable it after a successful restore so backups resume
+  # without a fresh empty snapshot overwriting prior remote state.
+  if ! command -v systemctl >/dev/null 2>&1; then
+    log "systemctl unavailable; enable the backup timer manually"
     return 0
   fi
-
-  local job_id=""
-  local job_name=""
-  local job_paused=""
-  local line
-  local normalized
-  while IFS= read -r line; do
-    normalized="$(trim_ws "$line")"
-    if [[ -z "$normalized" ]]; then
-      job_id=""
-      job_name=""
-      job_paused=""
-      continue
-    fi
-
-    case "$normalized" in
-      ID:*)
-        job_id="$(trim_ws "${normalized#*:}")"
-        ;;
-      Name:*)
-        job_name="$(trim_ws "${normalized#*:}")"
-        ;;
-      Paused:*)
-        job_paused="$(trim_ws "${normalized#*:}")"
-        if [[ "$job_name" == "hermes-backup-gdrive" && "$job_paused" == "true" && -n "$job_id" ]]; then
-          hermes cron resume "$job_id"
-          log "resumed Hermes backup cron job: $job_id"
-          return 0
-        fi
-        ;;
-    esac
-  done <<<"$list_output"
-
-  log "Hermes backup cron already active or not found"
+  systemctl --user daemon-reload 2>/dev/null || true
+  if systemctl --user enable --now hermes-backup.timer 2>/dev/null; then
+    log "enabled Hermes backup timer (systemd)"
+  else
+    log "could not enable hermes-backup.timer; run: systemctl --user enable --now hermes-backup.timer"
+  fi
 }
 
 latest_archive_in_remote() {
@@ -200,5 +167,5 @@ if ((ASSUME_YES != 1)); then
 fi
 
 hermes import "$LOCAL_ARCHIVE" --force
-resume_backup_cron_if_paused
+enable_backup_timer
 log "restore complete"
