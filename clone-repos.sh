@@ -29,6 +29,12 @@ clone_or_pull https://github.com/alex-irvine/dotfiles.git ~/dotfiles
 echo "==== Cloning .triage ===="
 clone_or_pull https://github.com/alex-irvine/.triage.git ~/Proj/.triage
 
+echo "==== Cloning agent-lib ===="
+# Personally-authored agent content (skills, subagents, commands, SOUL,
+# hstandup tooling). Installed by agent-lib/install.sh in endeavouros-setup.sh,
+# not stow. See agent-lib/MANIFEST.md for the provenance boundary.
+clone_or_pull https://github.com/alex-irvine/agent-lib.git ~/Proj/agent-lib
+
 echo "==== Cloning Firecrawl ===="
 clone_or_pull https://github.com/firecrawl/firecrawl.git ~/Proj/firecrawl
 

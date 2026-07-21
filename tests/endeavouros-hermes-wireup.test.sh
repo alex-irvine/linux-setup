@@ -15,8 +15,13 @@ CONTENT="$(cat "$FILE")"
   exit 1
 }
 
-[[ "$CONTENT" == *'echo "==== Restowing Hermes dotfiles (config, scripts, skills) ===="'* ]] || {
-  echo "FAIL: Hermes restow does not document skills coverage"
+[[ "$CONTENT" == *'echo "==== Restowing Hermes config (skills + scripts come from agent-lib) ===="'* ]] || {
+  echo "FAIL: Hermes restow echo not updated for agent-lib split"
+  exit 1
+}
+
+[[ "$CONTENT" == *'~/Proj/agent-lib/install.sh'* ]] || {
+  echo "FAIL: missing agent-lib install invocation"
   exit 1
 }
 

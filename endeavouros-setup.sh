@@ -83,7 +83,7 @@ done
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow claude evolution foot git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator triage waybar zsh
+stow --target="$HOME" --restow claude evolution foot git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator waybar zsh
 cd -
 
 echo "==== Setting dark color-scheme (dconf) ===="
@@ -562,12 +562,25 @@ bash "$SCRIPT_DIR/opencode-setup.sh"
 echo "==== Running hermes-setup.sh ===="
 bash "$SCRIPT_DIR/hermes-setup.sh"
 
-echo "==== Restowing Hermes dotfiles (config, scripts, skills) ===="
+echo "==== Restowing Hermes config (skills + scripts come from agent-lib) ===="
 cd ~/dotfiles
-# Keep target directories real so generated sidecars (for example Python
-# __pycache__) stay in $HOME rather than appearing in the dotfiles source.
+# The hermes dotfiles package now holds only config.yaml (settings). Authored
+# skills, SOUL.md, scripts, and hstandup tooling live in ~/Proj/agent-lib and
+# are symlinked by its install.sh below. Keep the target dir real so generated
+# sidecars (for example Python __pycache__) stay in $HOME, not the source repo.
 stow --no-folding --target="$HOME" --restow hermes
 cd -
+
+echo "==== Installing agent-lib (authored skills/agents/commands/SOUL/tooling) ===="
+# Symlinks personally-authored content into ~/.claude, ~/.hermes, ~/.local.
+# Runs after the provider installs so the bundled Hermes catalog already
+# exists (authored skills are symlinked alongside it), and BEFORE the Hermes
+# backup bootstrap below, which uses ~/.hermes/scripts/hermes-backup-gdrive.sh.
+if [ -x ~/Proj/agent-lib/install.sh ]; then
+  ~/Proj/agent-lib/install.sh
+else
+  echo "WARN: ~/Proj/agent-lib/install.sh missing; run clone-repos.sh first" >&2
+fi
 
 ###########################################################
 # Hermes backup bootstrap (official backup + cron)

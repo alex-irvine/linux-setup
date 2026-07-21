@@ -15,4 +15,9 @@ CONTENT="$(cat "$FILE")"
   exit 1
 }
 
-echo "PASS: firecrawl clone wireup present"
+[[ "$CONTENT" == *"agent-lib.git"* && "$CONTENT" == *"~/Proj/agent-lib"* ]] || {
+  echo "FAIL: agent-lib clone wireup missing in clone-repos.sh"
+  exit 1
+}
+
+echo "PASS: firecrawl + agent-lib clone wireup present"
