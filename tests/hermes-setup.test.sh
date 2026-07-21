@@ -64,7 +64,7 @@ EOF
   chmod +x "$tmp/bin/hermes" "$tmp/bin/docker" "$tmp/restore-hermes.sh"
 
   set +e
-  output="$(PATH="$tmp/bin:$PATH" TEST_LOG="$tmp/log" FIRECRAWL_DIR="$tmp/firecrawl" RESTORE_SCRIPT="$tmp/restore-hermes.sh" "$SUT" 2>&1)"
+  output="$(PATH="$tmp/bin:$PATH" TEST_LOG="$tmp/log" FIRECRAWL_DIR="$tmp/firecrawl" PRODUCT_OPS_DIR="$tmp/po-missing" RESTORE_SCRIPT="$tmp/restore-hermes.sh" "$SUT" 2>&1)"
   rc=$?
   set -e
 
@@ -75,6 +75,8 @@ EOF
   grep -q '^BULL_AUTH_KEY=' "$tmp/firecrawl/.env"
   grep -q 'docker compose up -d' "$tmp/log"
   grep -q 'restore-called' "$tmp/log"
+  # product-operations build step runs (non-fatal when the source dir is absent)
+  assert_contains "$output" "product-operations"
   assert_contains "$output" "Hermes + Firecrawl setup complete"
 }
 
