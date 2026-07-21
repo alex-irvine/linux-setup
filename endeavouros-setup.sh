@@ -213,21 +213,9 @@ if [ ! -d "$HOME/.oh-my-zsh" ]; then
     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 fi
 
-# Source oh-my-zsh with the robbyrussell theme (cwd + git branch + dirty marker).
-# KEEP_ZSHRC=yes above means the OMZ installer didn't touch ~/.zshrc, so wire it up here.
-if ! grep -q 'oh-my-zsh.sh' ~/.zshrc; then
-  cat >>~/.zshrc <<'OMZ'
-
-export ZSH="$HOME/.oh-my-zsh"
-ZSH_THEME="robbyrussell"
-source "$ZSH/oh-my-zsh.sh"
-OMZ
-fi
-
-if ! grep -q "EDITOR" ~/.zshrc; then
-  echo "export EDITOR='nvim'" >>~/.zshrc
-  echo "export VISUAL='nvim'" >>~/.zshrc
-fi
+# KEEP_ZSHRC=yes above means the OMZ installer didn't touch ~/.zshrc.
+# The oh-my-zsh sourcing/theme and the EDITOR/VISUAL exports all live in
+# the stowed ~/.zshrc (zsh dotfiles package).
 
 ###########################################################
 # tmux + tmuxinator
@@ -238,18 +226,8 @@ sudo pacman -S --noconfirm --needed tmux ruby ruby-erb
 gem install --user-install tmuxinator
 
 # tmuxinator installs into the user gem bindir (e.g. ~/.local/share/gem/ruby/3.4.0/bin),
-# which isn't on PATH by default. Add it, and define the conventional `mux` alias.
-if ! grep -q 'Gem.user_dir' ~/.zshrc; then
-  cat >>~/.zshrc <<'GEMPATH'
-
-if command -v ruby >/dev/null 2>&1; then
-  export PATH="$(ruby -e 'puts Gem.user_dir')/bin:$PATH"
-fi
-GEMPATH
-fi
-if ! grep -q "alias mux=" ~/.zshrc; then
-  echo "alias mux='tmuxinator'" >>~/.zshrc
-fi
+# which isn't on PATH by default. The gem bindir PATH export and the `mux`
+# alias both live in the stowed ~/.zshrc (zsh dotfiles package).
 
 # tmux plugin repos (tpm, tmux-yank) are cloned in clone-repos.sh.
 
@@ -258,10 +236,6 @@ fi
 ###########################################################
 echo "==== Installing Google Chrome ===="
 yay -S --noconfirm --needed google-chrome
-
-if ! grep -q "alias chrome=" ~/.zshrc; then
-  echo "alias chrome='nohup google-chrome --disable-gpu-compositing > /dev/null 2>&1 & disown'" >>~/.zshrc
-fi
 
 ###########################################################
 # Docker
@@ -297,10 +271,6 @@ if ! command -v lazydocker >/dev/null 2>&1; then
   curl -L "https://github.com/jesseduffield/lazydocker/releases/download/${LAZYDOCKER_VERSION}/lazydocker_${LAZYDOCKER_VERSION#v}_Linux_x86_64.tar.gz" -o lazydocker.tar.gz
   sudo tar -xzvf lazydocker.tar.gz -C /usr/local/bin lazydocker
   rm lazydocker.tar.gz
-fi
-
-if ! grep -q "alias lzd=" ~/.zshrc; then
-  echo "alias lzd='lazydocker'" >>~/.zshrc
 fi
 
 ###########################################################
@@ -361,10 +331,6 @@ sudo pacman -S --noconfirm --needed evolution evolution-ews gnome-keyring seahor
 echo "==== Installing LazyGit ===="
 sudo pacman -S --noconfirm --needed lazygit
 
-if ! grep -q "alias lzg=" ~/.zshrc; then
-  echo "alias lzg='lazygit'" >>~/.zshrc
-fi
-
 ###########################################################
 # Tig
 ###########################################################
@@ -398,22 +364,8 @@ sudo pacman -S --noconfirm --needed \
   bat \
   atool
 
-# cd-on-quit wrapper from yazi docs:
-# https://yazi-rs.github.io/docs/quick-start#shell-wrapper
-if ! grep -q "yazi-cwd" ~/.zshrc; then
-  cat >>~/.zshrc <<'EOF'
-
-# yazi cd-on-quit
-function y() {
-  local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
-  yazi "$@" --cwd-file="$tmp"
-  if cwd="$(command cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
-    builtin cd -- "$cwd"
-  fi
-  rm -f -- "$tmp"
-}
-EOF
-fi
+# The yazi cd-on-quit `y()` wrapper lives in the stowed ~/.zshrc (zsh
+# dotfiles package): https://yazi-rs.github.io/docs/quick-start#shell-wrapper
 
 ###########################################################
 # Beekeeper Studio
@@ -470,11 +422,7 @@ if ! command -v logcli >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/logcli" ]; th
   rm /tmp/logcli-linux-amd64.zip
 fi
 
-if ! grep -q "logcli completion zsh" ~/.zshrc; then
-  echo "" >>~/.zshrc
-  echo "# logcli autocompletion" >>~/.zshrc
-  echo 'eval "$(logcli --completion-script-zsh)"' >>~/.zshrc
-fi
+# logcli zsh autocompletion is wired up in the stowed ~/.zshrc (zsh dotfiles package).
 
 echo "==== Configuring Gonzo for Serilog ===="
 mkdir -p ~/.config/gonzo/formats
@@ -555,21 +503,16 @@ gh release download --repo datascopesystems/lazyfleet \
   --clobber
 chmod +x ~/.local/bin/lazyfleet
 
-# Ensure ~/.local/bin is on PATH
-if ! grep -q 'local/bin' ~/.zshrc; then
-  echo 'export PATH="$HOME/.local/bin:$PATH"' >>~/.zshrc
-fi
+echo "==== Installing lazydiff ===="
+gh release download --repo alex-irvine/lazydiff \
+  --pattern 'lazydiff-linux-amd64' \
+  --output ~/.local/bin/lazydiff \
+  --clobber
+chmod +x ~/.local/bin/lazydiff
 
-if ! grep -q "alias lzo=" ~/.zshrc; then
-  echo "alias lzo='lazyorc'" >>~/.zshrc
-fi
-if ! grep -q "alias lzf=" ~/.zshrc; then
-  echo "alias lzf='lazyfleet'" >>~/.zshrc
-fi
-
-if ! grep -q 'exec sway' ~/.zshrc; then
-  echo 'if [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" -eq 1 ]; then exec sway; fi' >>~/.zshrc
-fi
+# The ~/.local/bin PATH export, the lzo/lzf/lzdiff aliases, and the
+# `exec sway` login hook all live in the stowed ~/.zshrc (zsh dotfiles
+# package), so nothing is appended here.
 
 ###########################################################
 # Claude Code (CLI + hooks + plugins)
