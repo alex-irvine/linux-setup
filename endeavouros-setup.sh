@@ -562,6 +562,9 @@ bash "$SCRIPT_DIR/opencode-setup.sh"
 echo "==== Running hermes-setup.sh ===="
 bash "$SCRIPT_DIR/hermes-setup.sh"
 
+echo "==== Running mem0-setup.sh ===="
+bash "$SCRIPT_DIR/mem0-setup.sh"
+
 echo "==== Restowing Hermes config (skills + scripts come from agent-lib) ===="
 cd ~/dotfiles
 # The hermes dotfiles package now holds only config.yaml (settings). Authored
