@@ -8,6 +8,7 @@ ZSHRC="${ZSHRC:-$HOME/.zshrc}"
 MEM0_USER_ID="${MEM0_USER_ID:-alex}"
 HERMES_CMD="${HERMES_CMD:-hermes}"
 HERMES_MEM0_JSON="${HERMES_MEM0_JSON:-$HOME/.hermes/mem0.json}"
+CLAUDE_CMD="${CLAUDE_CMD:-claude}"
 
 log() { printf '[mem0-setup] %s\n' "$*"; }
 err() { printf '[mem0-setup] %s\n' "$*" >&2; }
@@ -104,11 +105,31 @@ activate_hermes_provider() {
   log "activated Hermes mem0 provider (user_id=$MEM0_USER_ID)"
 }
 
+configure_claude_plugin() {
+  # Claude Code's marketplace plugin has a required, sensitive `api_key`
+  # userConfig field (confirmed by reading the plugin's own manifest,
+  # integrations/mem0-plugin/.claude-plugin/plugin.json) -- separate from
+  # process env. Shell-env MEM0_API_KEY alone is not enough for Claude
+  # Code's plugin the way it is for Hermes and OpenCode's. This is
+  # tolerant of claude not being installed yet (claude-setup.sh, which
+  # installs the plugin itself, may not have run in every invocation
+  # order this script could be called from).
+  if ! command -v "$CLAUDE_CMD" >/dev/null 2>&1; then
+    log "claude not installed, skipping plugin config"
+    return 0
+  fi
+  local key
+  key="$(grep -m1 '^MEM0_API_KEY=' "$ENV_FILE" | cut -d= -f2-)"
+  "$CLAUDE_CMD" plugin install mem0@mem0-plugins --config "api_key=$key"
+  log "configured Claude Code mem0 plugin api_key"
+}
+
 main() {
   ensure_central_key
   ensure_zshrc_export
   ensure_hermes_env_key
   activate_hermes_provider
+  configure_claude_plugin
   log "mem0-setup complete"
 }
 
