@@ -7,6 +7,7 @@ HERMES_ENV="${HERMES_ENV:-$HOME/.hermes/.env}"
 ZSHRC="${ZSHRC:-$HOME/.zshrc}"
 MEM0_USER_ID="${MEM0_USER_ID:-alex}"
 HERMES_CMD="${HERMES_CMD:-hermes}"
+HERMES_MEM0_JSON="${HERMES_MEM0_JSON:-$HOME/.hermes/mem0.json}"
 
 log() { printf '[mem0-setup] %s\n' "$*"; }
 err() { printf '[mem0-setup] %s\n' "$*" >&2; }
@@ -75,14 +76,31 @@ ensure_hermes_env_key() {
   log "ensured MEM0_API_KEY in $HERMES_ENV"
 }
 
+ensure_hermes_mem0_json() {
+  if [[ -f "$HERMES_MEM0_JSON" ]] && grep -qF "\"user_id\": \"$MEM0_USER_ID\"" "$HERMES_MEM0_JSON" 2>/dev/null; then
+    log "$HERMES_MEM0_JSON already has user_id=$MEM0_USER_ID"
+    return 0
+  fi
+  mkdir -p "$(dirname "$HERMES_MEM0_JSON")"
+  printf '{\n  "mode": "platform",\n  "user_id": "%s"\n}\n' "$MEM0_USER_ID" >"$HERMES_MEM0_JSON"
+  log "wrote $HERMES_MEM0_JSON (user_id=$MEM0_USER_ID)"
+}
+
 activate_hermes_provider() {
   if ! command -v "$HERMES_CMD" >/dev/null 2>&1; then
     err "hermes not installed yet; run hermes-setup.sh first"
     return 1
   fi
-  local key
-  key="$(grep -m1 '^MEM0_API_KEY=' "$ENV_FILE" | cut -d= -f2-)"
-  "$HERMES_CMD" memory setup mem0 --mode platform --api-key "$key" --user-id "$MEM0_USER_ID"
+  # Note: this installed Hermes version's `memory setup mem0` subcommand only
+  # accepts a bare provider positional (no --mode/--api-key/--user-id flags),
+  # despite Mem0's own published docs showing that flag-based invocation --
+  # confirmed against `hermes memory setup mem0 --help` during implementation,
+  # not assumed from the docs. `config set memory.provider mem0` plus a
+  # hand-written mem0.json is the documented "Or manually:" fallback path
+  # (see the mem0 plugin's own bundled README.md), and is what actually works
+  # on this build.
+  "$HERMES_CMD" config set memory.provider mem0
+  ensure_hermes_mem0_json
   log "activated Hermes mem0 provider (user_id=$MEM0_USER_ID)"
 }
 

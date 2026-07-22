@@ -102,10 +102,31 @@ test_activates_hermes_provider_with_correct_flags() {
 
   PATH="$tmp/bin:$PATH" TEST_LOG="$tmp/log" \
     MEM0_CONFIG_DIR="$tmp/mem0cfg" HERMES_ENV="$tmp/hermes.env" ZSHRC="$tmp/zshrc" \
+    HERMES_MEM0_JSON="$tmp/mem0.json" \
     MEM0_API_KEY="m0-test-key" MEM0_USER_ID="alex" "$SUT" >/dev/null 2>&1
 
-  assert_contains "$(cat "$tmp/log")" \
-    "hermes-called: memory setup mem0 --mode platform --api-key m0-test-key --user-id alex"
+  assert_contains "$(cat "$tmp/log")" "hermes-called: config set memory.provider mem0"
+  grep -q '"user_id": "alex"' "$tmp/mem0.json"
+  grep -q '"mode": "platform"' "$tmp/mem0.json"
+}
+
+test_mem0_json_idempotent_when_user_id_already_matches() {
+  local tmp; tmp="$(new_tmp)"; trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/bin"; fake_hermes_logging_argv "$tmp/bin"
+  : >"$tmp/log"; : >"$tmp/zshrc"; : >"$tmp/hermes.env"
+  printf '{\n  "mode": "platform",\n  "user_id": "alex",\n  "agent_id": "custom"\n}\n' >"$tmp/mem0.json"
+
+  set +e
+  output="$(PATH="$tmp/bin:$PATH" TEST_LOG="$tmp/log" \
+    MEM0_CONFIG_DIR="$tmp/mem0cfg" HERMES_ENV="$tmp/hermes.env" ZSHRC="$tmp/zshrc" \
+    HERMES_MEM0_JSON="$tmp/mem0.json" \
+    MEM0_API_KEY="m0-test-key" MEM0_USER_ID="alex" "$SUT" 2>&1)"
+  rc=$?
+  set -e
+
+  [[ $rc -eq 0 ]]
+  grep -q '"agent_id": "custom"' "$tmp/mem0.json"
+  assert_contains "$output" "already has user_id=alex"
 }
 
 test_missing_hermes_command_fails_clearly() {
@@ -128,5 +149,6 @@ test_skips_prompt_when_key_already_present
 test_appends_zshrc_export_idempotently
 test_ensures_hermes_env_key_matches_central
 test_activates_hermes_provider_with_correct_flags
+test_mem0_json_idempotent_when_user_id_already_matches
 test_missing_hermes_command_fails_clearly
 echo "PASS: mem0-setup contract tests"
