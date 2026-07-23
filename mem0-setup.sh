@@ -9,6 +9,7 @@ MEM0_USER_ID="${MEM0_USER_ID:-alex}"
 HERMES_CMD="${HERMES_CMD:-hermes}"
 HERMES_MEM0_JSON="${HERMES_MEM0_JSON:-$HOME/.hermes/mem0.json}"
 CLAUDE_CMD="${CLAUDE_CMD:-claude}"
+COPILOT_CMD="${COPILOT_CMD:-copilot}"
 
 log() { printf '[mem0-setup] %s\n' "$*"; }
 err() { printf '[mem0-setup] %s\n' "$*" >&2; }
@@ -124,12 +125,37 @@ configure_claude_plugin() {
   log "configured Claude Code mem0 plugin api_key"
 }
 
+configure_copilot_mcp() {
+  # GitHub Copilot CLI is a genuine standalone harness (own session loop, own
+  # MCP config at ~/.copilot/mcp-config.json) -- rarely used directly here
+  # (mostly stitched in as a model backend through OpenCode/Hermes instead),
+  # but wired defensively so it isn't a dead end if it ever is used directly.
+  # No official Mem0 plugin exists for it (unlike Claude Code/OpenCode), so
+  # this is bare MCP registration only -- tools available, no auto-capture
+  # hooks and no auto-injected user_id. `copilot mcp add` is NOT idempotent
+  # (errors if the name already exists) -- check via `mcp get` first.
+  if ! command -v "$COPILOT_CMD" >/dev/null 2>&1; then
+    log "copilot not installed, skipping mcp config"
+    return 0
+  fi
+  if "$COPILOT_CMD" mcp get mem0 >/dev/null 2>&1; then
+    log "copilot mem0 mcp entry already present"
+    return 0
+  fi
+  local key
+  key="$(grep -m1 '^MEM0_API_KEY=' "$ENV_FILE" | cut -d= -f2-)"
+  "$COPILOT_CMD" mcp add --transport http mem0 "https://mcp.mem0.ai/mcp/" \
+    --header "Authorization: Token $key"
+  log "registered mem0 MCP server for Copilot CLI"
+}
+
 main() {
   ensure_central_key
   ensure_zshrc_export
   ensure_hermes_env_key
   activate_hermes_provider
   configure_claude_plugin
+  configure_copilot_mcp
   log "mem0-setup complete"
 }
 
