@@ -35,9 +35,6 @@ echo "==== Cloning agent-lib ===="
 # not stow. See agent-lib/MANIFEST.md for the provenance boundary.
 clone_or_pull https://github.com/alex-irvine/agent-lib.git ~/Proj/agent-lib
 
-echo "==== Cloning Firecrawl ===="
-clone_or_pull https://github.com/firecrawl/firecrawl.git ~/Proj/firecrawl
-
 echo "==== Cloning tmux plugins ===="
 clone_or_pull https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 clone_or_pull https://github.com/tmux-plugins/tmux-yank ~/.tmux/plugins/tmux-yank

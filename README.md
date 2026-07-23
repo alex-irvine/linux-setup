@@ -34,8 +34,13 @@ Sudo password cached for pacman/yay.
 4. Pulls private `lazyorc` + `lazyfleet` releases via gh.
 5. Runs `claude-setup.sh` — installs Claude Code CLI, rtk, marketplaces
    (caveman, claude-plugins-official, claude-hud), plugins.
-6. Runs hermes-setup.sh (Hermes install, Firecrawl self-host bring-up,
-   product-operations venv build, restore bootstrap).
+6. Runs `firecrawl-setup.sh` first (installs firecrawl-cli, seeds its
+   stored credentials, ensures `~/.hermes/.env` has `FIRECRAWL_API_KEY`/
+   `FIRECRAWL_API_URL` — both Hermes and OpenCode's firecrawl-* skills
+   read from this single source; see
+   docs/superpowers/plans/2026-07-22-firecrawl-cloud-migration-plan.md).
+   Runs hermes-setup.sh (Hermes install, product-operations venv build,
+   restore bootstrap).
 7. Runs mem0-setup.sh (central Mem0 API key, Hermes native memory provider
    activation) — see "Mem0 cross-provider memory" below.
 8. Enables the persistent `hermes-backup.timer` (systemd user timer) for daily

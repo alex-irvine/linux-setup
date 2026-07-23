@@ -5,13 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FILE="$ROOT_DIR/clone-repos.sh"
 CONTENT="$(cat "$FILE")"
 
-[[ "$CONTENT" == *"firecrawl/firecrawl.git"* ]] || {
-  echo "FAIL: firecrawl repo url missing in clone-repos.sh"
-  exit 1
-}
-
-[[ "$CONTENT" == *"~/Proj/firecrawl"* ]] || {
-  echo "FAIL: firecrawl destination ~/Proj/firecrawl missing in clone-repos.sh"
+# Firecrawl migrated to the hosted cloud API (2026-07-22) -- must NOT be
+# cloned/self-hosted again without revisiting that decision.
+[[ "$CONTENT" != *"firecrawl/firecrawl.git"* ]] || {
+  echo "FAIL: firecrawl clone re-added to clone-repos.sh -- see docs/superpowers/plans/2026-07-22-firecrawl-cloud-migration-plan.md"
   exit 1
 }
 
@@ -20,4 +17,4 @@ CONTENT="$(cat "$FILE")"
   exit 1
 }
 
-echo "PASS: firecrawl + agent-lib clone wireup present"
+echo "PASS: agent-lib clone wireup present; firecrawl clone intentionally absent"

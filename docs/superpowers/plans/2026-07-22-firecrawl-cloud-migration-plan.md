@@ -430,11 +430,11 @@ Expected: HTTP `200`, and the JSON body contains markdown content from example.c
 - Consumes: nothing from Task 1 (this task only removes code).
 - Produces: a `hermes-setup.sh` with no `docker`/`FIRECRAWL_DIR` references, which Task 3's test rewrite depends on.
 
-- [ ] **Step 1: Remove the `FIRECRAWL_DIR` variable and the `docker` requirement**
+- [x] **Step 1: Remove the `FIRECRAWL_DIR` variable and the `docker` requirement**
 
 In `hermes-setup.sh`, remove line 5 (`FIRECRAWL_DIR="${FIRECRAWL_DIR:-$HOME/Proj/firecrawl}"`) and remove `ensure_cmd docker` from `main()` (currently the first line of `main()`, right after the `main() {` opening) — nothing else in this script uses docker once the bring-up block below is removed.
 
-- [ ] **Step 2: Remove the entire firecrawl bring-up block from `main()`**
+- [x] **Step 2: Remove the entire firecrawl bring-up block from `main()`**
 
 Delete this whole block (currently between `install_hermes_if_missing`/`ensure_cmd hermes` and `build_product_operations`):
 
@@ -473,7 +473,7 @@ Delete this whole block (currently between `install_hermes_if_missing`/`ensure_c
 
 Also remove the now-unused `ensure_env_key_if_missing` helper function (lines 18-25) — it existed only to build the firecrawl `.env`, and nothing else in this script calls it.
 
-- [ ] **Step 3: Update the final log message**
+- [x] **Step 3: Update the final log message**
 
 Change:
 ```bash
@@ -484,7 +484,7 @@ to:
   log "Hermes setup complete (Firecrawl via cloud API)"
 ```
 
-- [ ] **Step 4: Syntax-check**
+- [x] **Step 4: Syntax-check**
 
 Run: `bash -n ~/Proj/linux-setup/hermes-setup.sh && echo OK`
 Expected: `OK`.
@@ -500,7 +500,7 @@ Expected: `OK`.
 - Consumes: the simplified `hermes-setup.sh` from Task 2 (no `FIRECRAWL_DIR`, no docker, new log message).
 - Produces: a passing test file with no firecrawl/docker assertions.
 
-- [ ] **Step 1: Replace the whole file**
+- [x] **Step 1: Replace the whole file**
 
 The `test_missing_firecrawl_repo_fails` and `test_compose_failure_prints_logs_remediation` tests are entirely about behavior that no longer exists (delete both). `test_writes_required_env_keys_and_calls_restore` keeps only its product-operations + restore assertions. Replace the full file content with:
 
@@ -580,7 +580,7 @@ test_missing_restore_script_fails
 echo "PASS: hermes-setup contract tests"
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `bash ~/Proj/linux-setup/tests/hermes-setup.test.sh`
 Expected: `PASS: hermes-setup contract tests`
@@ -596,7 +596,7 @@ Expected: `PASS: hermes-setup contract tests`
 **Interfaces:**
 - Produces: `clone-repos.sh` with no firecrawl clone step; a test asserting its intentional absence (regression guard, same pattern already used elsewhere in this codebase for "must NOT reappear" checks).
 
-- [ ] **Step 1: Remove the firecrawl clone block**
+- [x] **Step 1: Remove the firecrawl clone block**
 
 In `clone-repos.sh`, remove:
 ```bash
@@ -604,7 +604,7 @@ echo "==== Cloning Firecrawl ===="
 clone_or_pull https://github.com/firecrawl/firecrawl.git ~/Proj/firecrawl
 ```
 
-- [ ] **Step 2: Update the test to assert absence, not presence**
+- [x] **Step 2: Update the test to assert absence, not presence**
 
 Replace the full content of `clone-repos-firecrawl-wireup.test.sh`:
 
@@ -631,7 +631,7 @@ CONTENT="$(cat "$FILE")"
 echo "PASS: agent-lib clone wireup present; firecrawl clone intentionally absent"
 ```
 
-- [ ] **Step 3: Run it**
+- [x] **Step 3: Run it**
 
 Run: `bash ~/Proj/linux-setup/tests/clone-repos-firecrawl-wireup.test.sh`
 Expected: `PASS: agent-lib clone wireup present; firecrawl clone intentionally absent`
@@ -647,7 +647,7 @@ Expected: `PASS: agent-lib clone wireup present; firecrawl clone intentionally a
 - Consumes: nothing new.
 - Produces: README wording consistent with the cloud-only setup; must keep the exact substring `"Runs hermes-setup.sh"` (asserted by `docs-hermes-firecrawl.test.sh:8`).
 
-- [ ] **Step 1: Update the step-6 description**
+- [x] **Step 1: Update the step-6 description**
 
 Change:
 ```markdown
@@ -667,7 +667,7 @@ to:
 
 (This preserves the literal substring `"Runs hermes-setup.sh"` required by the existing docs test — it now starts the second sentence instead of the first.)
 
-- [ ] **Step 2: Run the full linux-setup test suite**
+- [x] **Step 2: Run the full linux-setup test suite**
 
 Run:
 ```bash
@@ -676,11 +676,18 @@ for t in tests/*.test.sh; do printf '%-45s ' "$(basename "$t"):"; bash "$t" >/de
 ```
 Expected: every test prints `PASS`, including `docs-hermes-firecrawl.test.sh`, `hermes-setup.test.sh`, `firecrawl-setup.test.sh`, and `clone-repos-firecrawl-wireup.test.sh`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
+
+Note: `firecrawl-setup.sh`, `tests/firecrawl-setup.test.sh`, and the
+`endeavouros-setup.sh` call-site wiring (Task 1) were already committed and
+pushed separately, ahead of this step, as `d1c417a "firecrawl cloud"` —
+diff-verified identical to the final working-tree state, including the
+interactive-prompt revision. This step commits the remainder (Tasks 2-4's
+self-host removal, README):
 
 ```bash
 cd ~/Proj/linux-setup
-git add firecrawl-setup.sh tests/firecrawl-setup.test.sh endeavouros-setup.sh hermes-setup.sh clone-repos.sh README.md tests/hermes-setup.test.sh tests/clone-repos-firecrawl-wireup.test.sh docs/superpowers/plans/2026-07-22-firecrawl-cloud-migration-plan.md
+git add hermes-setup.sh clone-repos.sh README.md tests/hermes-setup.test.sh tests/clone-repos-firecrawl-wireup.test.sh docs/superpowers/plans/2026-07-22-firecrawl-cloud-migration-plan.md
 git commit -m "refactor: migrate Firecrawl from self-hosted to cloud API
 
 Self-hosted instance processed zero requests in its entire lifetime
@@ -688,11 +695,10 @@ Self-hosted instance processed zero requests in its entire lifetime
 unnoticed) and Firecrawl's free tier (1,000 credits/month) comfortably
 covers this usage. Removes the docker-compose bring-up from
 hermes-setup.sh and the clone from clone-repos.sh; FIRECRAWL_API_KEY/URL
-in ~/.hermes/.env now point at the hosted API instead.
-
-Adds firecrawl-setup.sh, run before hermes-setup.sh/opencode-setup.sh,
-so OpenCode's firecrawl-* skills authenticate too (seeds firecrawl-cli's
-stored credentials from the same ~/.hermes/.env -- one source, no
+in ~/.hermes/.env now point at the hosted API instead (firecrawl-setup.sh,
+wired before hermes-setup.sh/opencode-setup.sh, already landed in
+d1c417a -- also seeds firecrawl-cli's stored credentials there, so
+OpenCode's firecrawl-* skills authenticate from the same source, no
 duplicated key)."
 git push
 ```

@@ -14,7 +14,40 @@ assert_contains() {
   fi
 }
 
-test_missing_firecrawl_repo_fails() {
+test_builds_product_ops_and_calls_restore() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  : >"$tmp/log"
+
+  mkdir -p "$tmp/bin"
+  cat >"$tmp/bin/hermes" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  cat >"$tmp/restore-hermes.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "restore-called" >>"$TEST_LOG"
+exit 0
+EOF
+  chmod +x "$tmp/bin/hermes" "$tmp/restore-hermes.sh"
+
+  set +e
+  output="$(PATH="$tmp/bin:$PATH" TEST_LOG="$tmp/log" PRODUCT_OPS_DIR="$tmp/po-missing" RESTORE_SCRIPT="$tmp/restore-hermes.sh" "$SUT" 2>&1)"
+  rc=$?
+  set -e
+
+  [[ $rc -eq 0 ]]
+  grep -q 'restore-called' "$tmp/log"
+  # product-operations build step runs (non-fatal when the source dir is absent)
+  assert_contains "$output" "product-operations"
+  assert_contains "$output" "Hermes setup complete"
+  # docker/firecrawl bring-up is gone -- must not appear anywhere in output
+  [[ "$output" != *"docker compose"* ]]
+  [[ "$output" != *"Firecrawl repo"* ]]
+}
+
+test_missing_restore_script_fails() {
   local tmp
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
@@ -24,98 +57,17 @@ test_missing_firecrawl_repo_fails() {
 #!/usr/bin/env bash
 exit 0
 EOF
-  cat >"$tmp/bin/docker" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-  chmod +x "$tmp/bin/hermes" "$tmp/bin/docker"
+  chmod +x "$tmp/bin/hermes"
 
   set +e
-  output="$(PATH="$tmp/bin:$PATH" FIRECRAWL_DIR="$tmp/nope" RESTORE_SCRIPT="$tmp/restore-hermes.sh" "$SUT" 2>&1)"
+  output="$(PATH="$tmp/bin:$PATH" PRODUCT_OPS_DIR="$tmp/po-missing" RESTORE_SCRIPT="$tmp/nope.sh" "$SUT" 2>&1)"
   rc=$?
   set -e
 
   [[ $rc -eq 1 ]]
-  assert_contains "$output" "missing Firecrawl repo"
+  assert_contains "$output" "restore script missing"
 }
 
-test_writes_required_env_keys_and_calls_restore() {
-  local tmp
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
-
-  mkdir -p "$tmp/bin" "$tmp/firecrawl"
-  : >"$tmp/log"
-
-  cat >"$tmp/bin/hermes" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-  cat >"$tmp/bin/docker" <<'EOF'
-#!/usr/bin/env bash
-echo "docker $*" >>"$TEST_LOG"
-exit 0
-EOF
-  cat >"$tmp/restore-hermes.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "restore-called" >>"$TEST_LOG"
-exit 0
-EOF
-  chmod +x "$tmp/bin/hermes" "$tmp/bin/docker" "$tmp/restore-hermes.sh"
-
-  set +e
-  output="$(PATH="$tmp/bin:$PATH" TEST_LOG="$tmp/log" FIRECRAWL_DIR="$tmp/firecrawl" PRODUCT_OPS_DIR="$tmp/po-missing" RESTORE_SCRIPT="$tmp/restore-hermes.sh" "$SUT" 2>&1)"
-  rc=$?
-  set -e
-
-  [[ $rc -eq 0 ]]
-  grep -q '^PORT=3002$' "$tmp/firecrawl/.env"
-  grep -q '^HOST=0.0.0.0$' "$tmp/firecrawl/.env"
-  grep -q '^USE_DB_AUTHENTICATION=false$' "$tmp/firecrawl/.env"
-  grep -q '^BULL_AUTH_KEY=' "$tmp/firecrawl/.env"
-  grep -q 'docker compose up -d' "$tmp/log"
-  grep -q 'restore-called' "$tmp/log"
-  # product-operations build step runs (non-fatal when the source dir is absent)
-  assert_contains "$output" "product-operations"
-  assert_contains "$output" "Hermes + Firecrawl setup complete"
-}
-
-test_compose_failure_prints_logs_remediation() {
-  local tmp
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
-
-  mkdir -p "$tmp/bin" "$tmp/firecrawl"
-
-  cat >"$tmp/bin/hermes" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-  cat >"$tmp/bin/docker" <<'EOF'
-#!/usr/bin/env bash
-if [[ "$1" == "compose" && "$2" == "up" && "$3" == "-d" ]]; then
-  exit 42
-fi
-exit 0
-EOF
-  cat >"$tmp/restore-hermes.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "restore should not be called"
-exit 1
-EOF
-  chmod +x "$tmp/bin/hermes" "$tmp/bin/docker" "$tmp/restore-hermes.sh"
-
-  set +e
-  output="$(PATH="$tmp/bin:$PATH" FIRECRAWL_DIR="$tmp/firecrawl" RESTORE_SCRIPT="$tmp/restore-hermes.sh" "$SUT" 2>&1)"
-  rc=$?
-  set -e
-
-  [[ $rc -eq 42 ]]
-  assert_contains "$output" "failed to start Firecrawl docker compose stack"
-  assert_contains "$output" "cd \"$tmp/firecrawl\" && docker compose logs"
-}
-
-test_missing_firecrawl_repo_fails
-test_writes_required_env_keys_and_calls_restore
-test_compose_failure_prints_logs_remediation
+test_builds_product_ops_and_calls_restore
+test_missing_restore_script_fails
 echo "PASS: hermes-setup contract tests"
