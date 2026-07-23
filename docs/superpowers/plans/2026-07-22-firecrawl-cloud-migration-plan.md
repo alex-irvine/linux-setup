@@ -711,9 +711,9 @@ git push
 
 **Interfaces:** none.
 
-- [ ] **Step 1: Confirm Task 1's cloud smoke test passed** before touching the local stack — do not proceed if Task 1 Step 6 didn't return `200`.
+- [x] **Step 1: Confirm Task 1's cloud smoke test passed** before touching the local stack — do not proceed if Task 1 Step 6 didn't return `200`.
 
-- [ ] **Step 2: Stop and remove the local containers + volumes**
+- [x] **Step 2: Stop and remove the local containers + volumes**
 
 Run:
 ```bash
@@ -722,12 +722,12 @@ docker compose down -v
 ```
 Expected: all 6 `firecrawl-*` containers and the `fdb-data`/`fdb-cluster-file` volumes are removed. This reclaims disk space; there is nothing in those volumes worth keeping (confirmed: `nuq`/FoundationDB held only empty-queue reconciler state, zero jobs were ever processed).
 
-- [ ] **Step 3: Verify removal**
+- [x] **Step 3: Verify removal**
 
 Run: `docker ps -a --filter "name=firecrawl"`
 Expected: empty output.
 
-- [ ] **Step 4: (Optional, your call) remove the local clone**
+- [x] **Step 4: (Optional, your call) remove the local clone**
 
 The directory is no longer needed once the cloud API is configured and `clone-repos.sh` no longer clones it. If you want it gone:
 ```bash
@@ -741,17 +741,17 @@ Not required for correctness — leaving it is harmless, just an unused clone.
 
 **Files:** none.
 
-- [ ] **Step 1: Trigger a real firecrawl-backed request through the actual skill path** (not a bare curl this time)
+- [x] **Step 1: Trigger a real firecrawl-backed request through the actual skill path** (not a bare curl this time)
 
 Ask the agent to run: "scrape https://example.com and show me the title" (invokes the `firecrawl-scrape` skill, which shells out to the `firecrawl` CLI via OpenCode's Bash tool — authenticated via the stored credentials Task 1 seeded from `~/.hermes/.env`, not a direct env-var read).
 Expected: markdown content returned, no auth/connection errors.
 
-- [ ] **Step 2: Confirm it's hitting the cloud account, not a stale local reference**
+- [x] **Step 2: Confirm it's hitting the cloud account, not a stale local reference**
 
 Log in to your Firecrawl account at https://firecrawl.dev/ and check the usage/credits view for the request from Step 1.
 Expected: at least 2 credits consumed total (1 from Task 1 Step 6, 1 from this step) — confirms real cloud usage, not silently falling back to the (now-removed) local stack.
 
-- [ ] **Step 3: Set a monitoring reminder**
+- [x] **Step 3: Set a monitoring reminder**
 
 Same discipline as the mem0 design doc: the "fits comfortably in free tier" conclusion is reasoned from zero historical usage + moderate realistic estimates, not measured over a full month. Check the Firecrawl dashboard's credit usage after a few weeks of normal use. If ever exceeded, the escalation path is Hobby ($16/mo, 5,000 credits) before ever reconsidering self-hosting — and self-hosting should only be reconsidered with a backup/restore story designed up front, per the same standard set in the memory design doc.
 
