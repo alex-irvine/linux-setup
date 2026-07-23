@@ -615,6 +615,24 @@ systemctl --user daemon-reload || true
 systemctl --user enable --now hermes-backup.timer || true
 systemctl --user list-timers hermes-backup.timer --all || true
 
+###########################################################
+# Open Design daemon (systemd user service)
+#
+# open-design (yay -S --needed open-design, installed above by
+# opencode-setup.sh) ships a local daemon + web UI that opencode's
+# `open-design` MCP server proxies into (see
+# opencode/.config/opencode/opencode.jsonc, command: `open-design mcp
+# --daemon-url http://127.0.0.1:7456`). Left as a manually-backgrounded
+# process it silently goes stale across package upgrades (old daemon still
+# running old code) with zero crash visibility. Unit is stowed from the
+# dotfiles `systemd` package; here we ensure it's enabled and (re)started so
+# every reinstall/upgrade ends with a supervised, current-version daemon.
+###########################################################
+echo "==== Open Design daemon ===="
+systemctl --user daemon-reload || true
+systemctl --user enable --now open-design.service || true
+systemctl --user status open-design.service --no-pager || true
+
 if ! rclone listremotes 2>/dev/null | grep -qx "gdrive:"; then
   cat <<'RCLONE_HELP'
 Hermes backup remote not configured yet. Run once after setup:
