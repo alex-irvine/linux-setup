@@ -13,7 +13,7 @@ sudo pacman -Syu --noconfirm
 echo "==== Installing base tools ===="
 sudo pacman -S --noconfirm --needed \
   base-devel curl wget gnupg ca-certificates unzip clang pkgconf git github-cli \
-  git-delta tailscale fzf doxx
+  git-delta tailscale fzf doxx zoxide
 
 ###########################################################
 # GitHub CLI auth — must happen BEFORE the dotfiles clone
@@ -106,7 +106,7 @@ fi
 # yay utils
 ###########################################################
 echo "==== Installing yay utils ===="
-yay -S --noconfirm --needed bluetuith wl-clip-persist xleak-bin
+yay -S --noconfirm --needed bluetuith wl-clip-persist xleak-bin sesh-bin
 
 ###########################################################
 # Golang
