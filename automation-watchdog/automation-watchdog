@@ -148,9 +148,47 @@ if not dry_run:
 PY
 }
 
+TRACKED_TIMERS=(hermes-backup automation-watchdog)
+
+check_systemd_timers() {
+  if ! systemctl --user list-units --no-legend >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local name unit_file_state active_state result next_elapse next_epoch now_epoch
+  now_epoch="$(date -u +%s)"
+
+  for name in "${TRACKED_TIMERS[@]}"; do
+    unit_file_state="$(systemctl --user show "${name}.timer" --property=UnitFileState --value 2>/dev/null || true)"
+    active_state="$(systemctl --user show "${name}.timer" --property=ActiveState --value 2>/dev/null || true)"
+
+    if [[ "$unit_file_state" != "enabled" || "$active_state" != "active" ]]; then
+      printf 'systemd\tvanished\t%s\tsystemctl --user enable --now %s.timer\n' "$name" "$name"
+      continue
+    fi
+
+    result="$(systemctl --user show "${name}.service" --property=Result --value 2>/dev/null || true)"
+    if [[ -n "$result" && "$result" != "success" ]]; then
+      printf 'systemd\tfailing\t%s\t%s.service last result=%s. Debug: journalctl --user -u %s.service -n 50\n' \
+        "$name" "$name" "$result" "$name"
+      continue
+    fi
+
+    next_elapse="$(systemctl --user show "${name}.timer" --property=NextElapseUSecRealtime --value 2>/dev/null || true)"
+    if [[ -n "$next_elapse" && "$next_elapse" != "n/a" ]]; then
+      next_epoch="$(date -d "$next_elapse" +%s 2>/dev/null || true)"
+      if [[ -n "$next_epoch" && "$next_epoch" -lt "$now_epoch" ]]; then
+        printf 'systemd\tstale\t%s\t%s.timer next fire is in the past (%s). Check: systemctl --user list-timers %s.timer\n' \
+          "$name" "$name" "$next_elapse" "$name"
+      fi
+    fi
+  done
+}
+
 main() {
   mkdir -p "$DATA_DIR"
   check_hermes_cron
+  check_systemd_timers
 }
 
 main "$@"

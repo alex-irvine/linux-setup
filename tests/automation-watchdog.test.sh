@@ -106,8 +106,127 @@ test_healthy_job_reports_nothing() {
   assert_not_contains "$output" "healthy-report"
 }
 
+mk_fake_systemctl() {
+  local fakebin="$1" mode="$2"
+  cat >"$fakebin/systemctl" <<EOF
+#!/usr/bin/env bash
+if [[ "\$1" == "--user" && "\$2" == "list-units" ]]; then
+  exit 0
+fi
+if [[ "\$1" == "--user" && "\$2" == "show" ]]; then
+  unit="\$3"
+  prop="\${4#--property=}"
+  case "$mode:\$unit:\$prop" in
+    healthy:hermes-backup.timer:UnitFileState) echo "enabled" ;;
+    healthy:hermes-backup.timer:ActiveState) echo "active" ;;
+    healthy:hermes-backup.timer:NextElapseUSecRealtime) echo "Tue 2099-01-01 03:15:00 UTC" ;;
+    healthy:hermes-backup.service:Result) echo "success" ;;
+    disabled:hermes-backup.timer:UnitFileState) echo "disabled" ;;
+    disabled:hermes-backup.timer:ActiveState) echo "inactive" ;;
+    failing:hermes-backup.timer:UnitFileState) echo "enabled" ;;
+    failing:hermes-backup.timer:ActiveState) echo "active" ;;
+    failing:hermes-backup.timer:NextElapseUSecRealtime) echo "Tue 2099-01-01 03:15:00 UTC" ;;
+    failing:hermes-backup.service:Result) echo "exit-code" ;;
+    stale:hermes-backup.timer:UnitFileState) echo "enabled" ;;
+    stale:hermes-backup.timer:ActiveState) echo "active" ;;
+    stale:hermes-backup.timer:NextElapseUSecRealtime) echo "Tue 2020-01-01 03:15:00 UTC" ;;
+    stale:hermes-backup.service:Result) echo "success" ;;
+    *:automation-watchdog.timer:UnitFileState) echo "enabled" ;;
+    *:automation-watchdog.timer:ActiveState) echo "active" ;;
+    *:automation-watchdog.timer:NextElapseUSecRealtime) echo "Tue 2099-01-01 00:00:00 UTC" ;;
+    *:automation-watchdog.service:Result) echo "success" ;;
+    *) echo "" ;;
+  esac
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "$fakebin/systemctl"
+}
+
+test_systemd_timer_disabled_reports_enable_fix() {
+  local tmp home data_dir fakebin output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  home="$tmp/home"
+  data_dir="$home/.local/share/automation-watchdog"
+  fakebin="$tmp/fakebin"
+  mkdir -p "$home" "$fakebin"
+
+  write_jobs_file "$home" ""
+  write_snapshot "$data_dir" '{"hermes_cron": {}, "systemd": {}}'
+  mk_fake_systemctl "$fakebin" "disabled"
+
+  output="$(HOME="$home" WATCHDOG_DATA_DIR="$data_dir" PATH="$fakebin:$PATH" bash "$SUT" --dry-run)"
+
+  assert_contains "$output" "systemd"
+  assert_contains "$output" "vanished"
+  assert_contains "$output" "systemctl --user enable --now hermes-backup.timer"
+}
+
+test_systemd_service_failing_reports_result() {
+  local tmp home data_dir fakebin output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  home="$tmp/home"
+  data_dir="$home/.local/share/automation-watchdog"
+  fakebin="$tmp/fakebin"
+  mkdir -p "$home" "$fakebin"
+
+  write_jobs_file "$home" ""
+  write_snapshot "$data_dir" '{"hermes_cron": {}, "systemd": {}}'
+  mk_fake_systemctl "$fakebin" "failing"
+
+  output="$(HOME="$home" WATCHDOG_DATA_DIR="$data_dir" PATH="$fakebin:$PATH" bash "$SUT" --dry-run)"
+
+  assert_contains "$output" "failing"
+  assert_contains "$output" "exit-code"
+  assert_contains "$output" "journalctl --user -u hermes-backup.service -n 50"
+}
+
+test_systemd_timer_stale_next_elapse_reports_stale() {
+  local tmp home data_dir fakebin output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  home="$tmp/home"
+  data_dir="$home/.local/share/automation-watchdog"
+  fakebin="$tmp/fakebin"
+  mkdir -p "$home" "$fakebin"
+
+  write_jobs_file "$home" ""
+  write_snapshot "$data_dir" '{"hermes_cron": {}, "systemd": {}}'
+  mk_fake_systemctl "$fakebin" "stale"
+
+  output="$(HOME="$home" WATCHDOG_DATA_DIR="$data_dir" PATH="$fakebin:$PATH" bash "$SUT" --dry-run)"
+
+  assert_contains "$output" "stale"
+  assert_contains "$output" "systemctl --user list-timers hermes-backup.timer"
+}
+
+test_systemd_healthy_reports_nothing() {
+  local tmp home data_dir fakebin output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  home="$tmp/home"
+  data_dir="$home/.local/share/automation-watchdog"
+  fakebin="$tmp/fakebin"
+  mkdir -p "$home" "$fakebin"
+
+  write_jobs_file "$home" ""
+  write_snapshot "$data_dir" '{"hermes_cron": {}, "systemd": {}}'
+  mk_fake_systemctl "$fakebin" "healthy"
+
+  output="$(HOME="$home" WATCHDOG_DATA_DIR="$data_dir" PATH="$fakebin:$PATH" bash "$SUT" --dry-run)"
+
+  assert_not_contains "$output" "systemd"
+}
+
 test_hermes_cron_job_vanished_reports_reconstructed_fix
 test_hermes_cron_job_failing_reports_last_error
 test_hermes_cron_job_stale_reports_last_run
 test_healthy_job_reports_nothing
+test_systemd_timer_disabled_reports_enable_fix
+test_systemd_service_failing_reports_result
+test_systemd_timer_stale_next_elapse_reports_stale
+test_systemd_healthy_reports_nothing
 printf 'PASS: automation-watchdog contract tests\n'
