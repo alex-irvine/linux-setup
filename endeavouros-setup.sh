@@ -616,6 +616,21 @@ systemctl --user enable --now hermes-backup.timer || true
 systemctl --user list-timers hermes-backup.timer --all || true
 
 ###########################################################
+# Automation watchdog (systemd user timer)
+#
+# Checks Hermes-cron jobs (~/.hermes/cron/jobs.json) and this repo's systemd
+# --user timers (currently hermes-backup.timer and itself) every 4h for
+# vanished/failing/stale state, notifying locally via notify-send with a fix
+# command already in the body. Exists because hermes-backup-gdrive's
+# Hermes-cron job disappeared silently on 2026-07-21 with no signal in
+# either direction — see
+# docs/superpowers/specs/2026-07-27-automation-watchdog-design.md.
+###########################################################
+echo "==== Automation watchdog ===="
+bash "$SCRIPT_DIR/automation-watchdog/install-automation-watchdog.sh"
+systemctl --user list-timers automation-watchdog.timer --all || true
+
+###########################################################
 # Open Design daemon (systemd user service)
 #
 # open-design (yay -S --needed open-design, installed above by

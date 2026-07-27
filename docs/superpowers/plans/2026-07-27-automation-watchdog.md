@@ -1024,13 +1024,21 @@ CONTENT="$(cat "$FILE")"
   exit 1
 }
 
-[[ "$CONTENT" == *"enable --now automation-watchdog.timer"* ]] || {
-  echo "FAIL: automation-watchdog timer not enabled"
+[[ "$CONTENT" == *"list-timers automation-watchdog.timer"* ]] || {
+  echo "FAIL: automation-watchdog timer diagnostic call missing"
   exit 1
 }
 
 echo "PASS: automation-watchdog wireup present"
 ```
+
+> **Corrected during execution:** the first draft of this test asserted
+> `enable --now automation-watchdog.timer` appears in `endeavouros-setup.sh`
+> directly. It doesn't — that call lives inside
+> `install-automation-watchdog.sh`'s `enable_timer()` (Task 5), which
+> `endeavouros-setup.sh` just invokes. Running the test for real (per TDD)
+> caught this; the assertion above checks the diagnostic `list-timers` call
+> instead, which genuinely is in `endeavouros-setup.sh`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
