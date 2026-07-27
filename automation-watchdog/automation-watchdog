@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DATA_DIR="${WATCHDOG_DATA_DIR:-$HOME/.local/share/automation-watchdog}"
+SNAPSHOT_FILE="$DATA_DIR/snapshot.json"
+LOG_FILE="$DATA_DIR/watchdog.log"
+JOBS_FILE="$HOME/.hermes/cron/jobs.json"
+
+DRY_RUN=0
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+  esac
+done
+
+check_hermes_cron() {
+  python3 - "$JOBS_FILE" "$SNAPSHOT_FILE" "$DRY_RUN" <<'PY'
+import json
+import os
+import sys
+from datetime import datetime, timezone
+
+jobs_file, snapshot_file, dry_run = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
+
+
+def load_jobs(path):
+    if not os.path.exists(path):
+        return {"jobs": []}
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"unreadable: {e}", file=sys.stderr)
+        sys.exit(2)
+
+
+def load_snapshot(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"hermes_cron": {}, "systemd": {}}
+
+
+def parse_iso(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def period_seconds_for(schedule):
+    kind = schedule.get("kind")
+    if kind == "interval":
+        return int(schedule.get("minutes", 1440)) * 60
+    if kind == "cron":
+        # No croniter dependency in this system python3 — this repo only
+        # ever schedules simple daily-at-HH:MM cron jobs, so treat any
+        # "cron" kind as a daily period. Coarse but sufficient for a
+        # "way overdue" staleness signal, not exact scheduling math.
+        return 86400
+    return None  # "once" (one-shot) jobs are excluded from staleness checks
+
+
+def grace_seconds_for(period_seconds):
+    if period_seconds is None:
+        return 120
+    return max(120, min(period_seconds // 2, 7200))
+
+
+jobs_data = load_jobs(jobs_file)
+jobs = jobs_data.get("jobs") or []
+current_by_id = {j["id"]: j for j in jobs if isinstance(j, dict) and j.get("id")}
+
+snapshot = load_snapshot(snapshot_file)
+previous = snapshot.get("hermes_cron", {})
+
+now = datetime.now(timezone.utc)
+problems = []
+
+for job_id, prev_job in previous.items():
+    if job_id in current_by_id:
+        continue
+    name = prev_job.get("name", job_id)
+    schedule_display = prev_job.get("schedule_display", "")
+    script = prev_job.get("script")
+    no_agent_flag = " --no-agent" if prev_job.get("no_agent") else ""
+    script_part = f" --script {script}{no_agent_flag}" if script else ""
+    fix = f'hermes cron create "{schedule_display}" --name {name}{script_part}'
+    problems.append(("hermes_cron", "vanished", name, fix))
+
+for job_id, job in current_by_id.items():
+    if not job.get("enabled", True) or job.get("state") == "paused":
+        continue
+
+    name = job.get("name", job_id)
+
+    if job.get("last_status") == "error":
+        last_error = job.get("last_error") or "(no error text recorded)"
+        script = job.get("script")
+        debug_cmd = f"bash ~/.hermes/scripts/{script}" if script else "hermes cron list"
+        problems.append((
+            "hermes_cron", "failing", name,
+            f"job '{name}' failing: {last_error}. Debug: {debug_cmd}",
+        ))
+        continue
+
+    schedule = job.get("schedule") or {}
+    period_seconds = period_seconds_for(schedule)
+    if period_seconds is None:
+        continue
+
+    next_run_at = parse_iso(job.get("next_run_at"))
+    if next_run_at is None:
+        continue
+
+    grace_seconds = grace_seconds_for(period_seconds)
+    overdue_by = (now - next_run_at).total_seconds()
+    if overdue_by > period_seconds + grace_seconds:
+        problems.append((
+            "hermes_cron", "stale", name,
+            f"job '{name}' hasn't run since {job.get('last_run_at') or 'never'}, "
+            f"expected every {schedule.get('display', 'its schedule')}. "
+            f"Check: hermes cron list",
+        ))
+
+for line in problems:
+    print("\t".join(line))
+
+if not dry_run:
+    new_snapshot = {
+        "hermes_cron": {
+            jid: {
+                "name": j.get("name", jid),
+                "schedule_display": j.get("schedule_display", j.get("schedule", {}).get("display", "")),
+                "script": j.get("script"),
+                "no_agent": j.get("no_agent", False),
+            }
+            for jid, j in current_by_id.items()
+        },
+        "systemd": snapshot.get("systemd", {}),
+    }
+    with open(snapshot_file, "w") as f:
+        json.dump(new_snapshot, f, indent=2)
+PY
+}
+
+main() {
+  mkdir -p "$DATA_DIR"
+  check_hermes_cron
+}
+
+main "$@"
