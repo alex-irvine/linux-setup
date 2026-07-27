@@ -181,3 +181,30 @@ Runtime notes:
 - one-shot alarms only,
 - desktop session notifications (`notify-send`) + notification sound on fire,
 - data stored in `~/.local/share/alarm-cli/alarms.tsv`.
+
+## Automation watchdog
+
+A systemd user timer (`automation-watchdog.timer`) checks Hermes-cron jobs
+and this repo's systemd `--user` timers every 4 hours for jobs that have
+vanished, are failing, or have gone stale — and sends a desktop notification
+with the fix command already in the body. Silent when everything is
+healthy.
+
+Exists because the `hermes-backup-gdrive` Hermes-cron job was silently
+removed on 2026-07-21 (migrated to `hermes-backup.timer` — see "Hermes
+backup" above) and nothing signaled either way for days.
+
+Installed by `endeavouros-setup.sh` via
+`automation-watchdog/install-automation-watchdog.sh`, same pattern as the
+Alarm CLI.
+
+Design: [docs/superpowers/specs/2026-07-27-automation-watchdog-design.md](docs/superpowers/specs/2026-07-27-automation-watchdog-design.md)
+
+Manual run:
+
+```sh
+automation-watchdog --dry-run   # preview without notifying
+automation-watchdog             # normal run (silent if healthy)
+```
+
+Logs: `~/.local/share/automation-watchdog/watchdog.log`
