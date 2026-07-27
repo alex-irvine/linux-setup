@@ -1,0 +1,10 @@
+[Unit]
+Description=Automation watchdog check (every 4h; persistent; catches up after suspend/resume)
+
+[Timer]
+OnCalendar=*-*-* 0/4:00:00
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
