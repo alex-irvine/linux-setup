@@ -221,6 +221,90 @@ test_systemd_healthy_reports_nothing() {
   assert_not_contains "$output" "systemd"
 }
 
+test_dry_run_does_not_call_real_notify_send() {
+  local tmp home data_dir fakebin output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  home="$tmp/home"
+  data_dir="$home/.local/share/automation-watchdog"
+  fakebin="$tmp/fakebin"
+  mkdir -p "$home" "$fakebin"
+
+  cat >"$fakebin/notify-send" <<'EOF'
+#!/usr/bin/env bash
+echo "notify-send called: $*" >>"$NOTIFY_LOG"
+exit 0
+EOF
+  chmod +x "$fakebin/notify-send"
+  export NOTIFY_LOG="$tmp/notify.log"
+  : >"$NOTIFY_LOG"
+
+  write_jobs_file "$home" ""
+  write_snapshot "$data_dir" '{"hermes_cron": {"job-1": {"name": "vanished-job", "schedule_display": "0 3 * * *", "script": "x.sh", "no_agent": true}}, "systemd": {}}'
+  mk_fake_systemctl "$fakebin" "healthy"
+
+  output="$(HOME="$home" WATCHDOG_DATA_DIR="$data_dir" PATH="$fakebin:$PATH" bash "$SUT" --dry-run)"
+
+  assert_contains "$output" "vanished-job"
+  [[ ! -s "$NOTIFY_LOG" ]]
+}
+
+test_healthy_run_is_silent_and_exits_zero() {
+  local tmp home data_dir fakebin rc
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  home="$tmp/home"
+  data_dir="$home/.local/share/automation-watchdog"
+  fakebin="$tmp/fakebin"
+  mkdir -p "$home" "$fakebin"
+
+  cat >"$fakebin/notify-send" <<'EOF'
+#!/usr/bin/env bash
+echo "notify-send called: $*" >>"$NOTIFY_LOG"
+exit 0
+EOF
+  chmod +x "$fakebin/notify-send"
+  export NOTIFY_LOG="$tmp/notify.log"
+  : >"$NOTIFY_LOG"
+
+  write_jobs_file "$home" ""
+  write_snapshot "$data_dir" '{"hermes_cron": {}, "systemd": {}}'
+  mk_fake_systemctl "$fakebin" "healthy"
+
+  set +e
+  HOME="$home" WATCHDOG_DATA_DIR="$data_dir" PATH="$fakebin:$PATH" bash "$SUT" >/dev/null
+  rc=$?
+  set -e
+
+  [[ "$rc" -eq 0 ]]
+  [[ ! -s "$NOTIFY_LOG" ]]
+}
+
+test_both_backends_unreadable_exits_one() {
+  local tmp home data_dir fakebin rc
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  home="$tmp/home"
+  data_dir="$home/.local/share/automation-watchdog"
+  fakebin="$tmp/fakebin"
+  mkdir -p "$home/.hermes/cron" "$fakebin"
+  printf 'not valid json' >"$home/.hermes/cron/jobs.json"
+
+  cat >"$fakebin/systemctl" <<'EOF'
+#!/usr/bin/env bash
+echo "Failed to connect to bus" >&2
+exit 1
+EOF
+  chmod +x "$fakebin/systemctl"
+
+  set +e
+  HOME="$home" WATCHDOG_DATA_DIR="$data_dir" PATH="$fakebin:$PATH" bash "$SUT" >/dev/null 2>&1
+  rc=$?
+  set -e
+
+  [[ "$rc" -eq 1 ]]
+}
+
 test_hermes_cron_job_vanished_reports_reconstructed_fix
 test_hermes_cron_job_failing_reports_last_error
 test_hermes_cron_job_stale_reports_last_run
@@ -229,4 +313,7 @@ test_systemd_timer_disabled_reports_enable_fix
 test_systemd_service_failing_reports_result
 test_systemd_timer_stale_next_elapse_reports_stale
 test_systemd_healthy_reports_nothing
+test_dry_run_does_not_call_real_notify_send
+test_healthy_run_is_silent_and_exits_zero
+test_both_backends_unreadable_exits_one
 printf 'PASS: automation-watchdog contract tests\n'

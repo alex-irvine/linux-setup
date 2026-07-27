@@ -185,10 +185,108 @@ check_systemd_timers() {
   done
 }
 
+prepare_desktop_env() {
+  local uid runtime_dir
+  uid="$(id -u)"
+  runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$uid}"
+
+  export XDG_RUNTIME_DIR="$runtime_dir"
+
+  if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" && -S "$runtime_dir/bus" ]]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+  fi
+}
+
+try_play_sound() {
+  local sound_file="/usr/share/sounds/freedesktop/stereo/dialog-warning.oga"
+
+  if command -v paplay >/dev/null 2>&1 && [[ -f "$sound_file" ]]; then
+    if paplay "$sound_file" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  if command -v pw-play >/dev/null 2>&1 && [[ -f "$sound_file" ]]; then
+    if pw-play "$sound_file" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  if command -v canberra-gtk-play >/dev/null 2>&1; then
+    if canberra-gtk-play -i dialog-warning -d automation-watchdog >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+log_msg() {
+  printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >>"$LOG_FILE"
+}
+
+notify_problem() {
+  local backend="$1" kind="$2" name="$3" fix="$4"
+  local title="Automation watchdog: $backend $kind"
+
+  if command -v notify-send >/dev/null 2>&1; then
+    if ! notify-send -u critical "$title" "$name: $fix"; then
+      log_msg "notify-send failed for $backend/$name"
+    fi
+  else
+    log_msg "notify-send not available for $backend/$name: $fix"
+  fi
+
+  log_msg "$backend $kind $name: $fix"
+}
+
 main() {
   mkdir -p "$DATA_DIR"
-  check_hermes_cron
-  check_systemd_timers
+  touch "$LOG_FILE"
+
+  local hermes_ok=1 systemd_ok=1
+  local hermes_problems="" systemd_problems="" all_problems=""
+
+  if hermes_problems="$(check_hermes_cron)"; then
+    :
+  else
+    hermes_ok=0
+  fi
+
+  if systemd_problems="$(check_systemd_timers)"; then
+    :
+  else
+    systemd_ok=0
+  fi
+
+  if [[ "$hermes_ok" == "0" && "$systemd_ok" == "0" ]]; then
+    log_msg "both backends unreadable"
+    exit 1
+  fi
+
+  all_problems="$(printf '%s\n%s' "$hermes_problems" "$systemd_problems" | sed '/^$/d')"
+
+  if [[ -z "$all_problems" ]]; then
+    exit 0
+  fi
+
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '%s\n' "$all_problems"
+    exit 0
+  fi
+
+  prepare_desktop_env
+  local sound_played=0
+  while IFS=$'\t' read -r backend kind name fix; do
+    [[ -z "$backend" ]] && continue
+    notify_problem "$backend" "$kind" "$name" "$fix"
+    if [[ "$sound_played" == "0" ]]; then
+      try_play_sound || log_msg "sound playback failed"
+      sound_played=1
+    fi
+  done <<<"$all_problems"
+
+  exit 0
 }
 
 main "$@"
