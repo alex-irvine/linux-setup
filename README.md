@@ -78,6 +78,8 @@ automatically.
 
 Idempotent. Re-run safe.
 
+Full new-laptop restore runbook: [NEW-LAPTOP.md](NEW-LAPTOP.md)
+
 ## Mem0 cross-provider memory
 
 `mem0-setup.sh` provisions one `MEM0_API_KEY` for Claude Code, Hermes, and
