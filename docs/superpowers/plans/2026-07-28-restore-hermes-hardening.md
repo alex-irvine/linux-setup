@@ -231,6 +231,28 @@ fi
 Run: `bash tests/restore-hermes.test.sh`
 Expected: `PASS: restore-hermes contract tests`
 
+> **Discovered during execution:** two real bugs surfaced by running the
+> *full* test file, not just the new test.
+>
+> 1. `resolve_cross_host_remote()`'s stdout is a return-value channel
+>    (captured by the caller via `$(...)`) — the informational
+>    `"auto-selected..."` message must go through `err()` (stderr), not
+>    `log()` (stdout), or it gets concatenated into the captured return
+>    value. The original `prompt_for_remote_dir()` already used `err()` for
+>    exactly this reason; match it.
+> 2. The pre-existing `test_prompt_cross_host_restore` passed `--yes` *and*
+>    expected the interactive host-picker prompt to still appear (true
+>    under the old code, where `--yes` only gated the final confirmation).
+>    Under the new code this is no longer valid: `--yes` now means
+>    auto-select, never prompt — that's the fix, not a regression. Retire
+>    `test_prompt_cross_host_restore()` and its `mk_fakebin_cross_host_prompt`
+>    helper entirely (leave a comment explaining why, don't just delete
+>    silently) rather than patching it to keep asserting the old, now-wrong
+>    contract. Its coverage is superseded by
+>    `test_cross_host_auto_selects_most_recent_regardless_of_hostname`
+>    above plus the genuinely-interactive manual check in the Final
+>    Verification Gate.
+
 - [ ] **Step 5: Commit**
 
 ```bash

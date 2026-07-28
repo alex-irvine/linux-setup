@@ -54,7 +54,23 @@ latest_archive_in_remote() {
   rclone lsf "$remote" --files-only 2>/dev/null | grep -E '^hermes-.*\.zip$' | sort | tail -n 1 || true
 }
 
-prompt_for_remote_dir() {
+resolve_cross_host_remote() {
+  local all_archives
+  all_archives="$(rclone lsf "$BASE_REMOTE/" -R --files-only 2>/dev/null | grep -E '^[^/]+/hermes-.*\.zip$' | sort -t/ -k2)"
+  if [[ -z "$all_archives" ]]; then
+    return 1
+  fi
+
+  if ((ASSUME_YES == 1)) || ! (: </dev/tty) 2>/dev/null; then
+    local newest host_dir archive
+    newest="$(printf '%s\n' "$all_archives" | tail -n 1)"
+    host_dir="${newest%%/*}"
+    archive="${newest#*/}"
+    err "auto-selected most recent cross-host backup: $BASE_REMOTE/$host_dir/$archive"
+    printf '%s/%s %s\n' "$BASE_REMOTE" "$host_dir" "$archive"
+    return 0
+  fi
+
   local dirs
   mapfile -t dirs < <(rclone lsf "$BASE_REMOTE/" --dirs-only 2>/dev/null | sed 's:/$::')
   if ((${#dirs[@]} == 0)); then
@@ -69,8 +85,9 @@ prompt_for_remote_dir() {
     i=$((i + 1))
   done
 
-  printf "Enter selection number: " >&2
-  read -r selection
+  printf "Enter selection number: " >/dev/tty
+  local selection
+  read -r selection </dev/tty
   if ! [[ "$selection" =~ ^[0-9]+$ ]]; then
     err "invalid selection"
     exit 1
@@ -82,7 +99,10 @@ prompt_for_remote_dir() {
     exit 1
   fi
 
-  printf '%s/%s\n' "$BASE_REMOTE" "${dirs[$idx]}"
+  local chosen_dir="$BASE_REMOTE/${dirs[$idx]}"
+  local chosen_archive
+  chosen_archive="$(latest_archive_in_remote "$chosen_dir")"
+  printf '%s %s\n' "$chosen_dir" "$chosen_archive"
 }
 
 while (($# > 0)); do
@@ -133,10 +153,10 @@ if [[ -z "$ARCHIVE" ]]; then
 fi
 
 if [[ -z "$ARCHIVE" && "$REMOTE" == "$DEFAULT_REMOTE" ]]; then
-  selected_remote="$(prompt_for_remote_dir || true)"
-  if [[ -n "$selected_remote" ]]; then
-    REMOTE="$selected_remote"
-    ARCHIVE="$(latest_archive_in_remote "$REMOTE")"
+  selected="$(resolve_cross_host_remote || true)"
+  if [[ -n "$selected" ]]; then
+    REMOTE="${selected% *}"
+    ARCHIVE="${selected##* }"
   fi
 fi
 
