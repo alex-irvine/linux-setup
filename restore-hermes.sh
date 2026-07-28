@@ -49,6 +49,27 @@ enable_backup_timer() {
   fi
 }
 
+maybe_install_root_gateway() {
+  # Mirrors install.sh's own messaging-token check (maybe_start_gateway(),
+  # same exact var list) so a restored root/default profile gets its
+  # gateway reinstalled automatically — hermes import itself only reminds
+  # about *named* profiles, never the root one.
+  local env_file="$HOME/.hermes/.env"
+  if [[ ! -f "$env_file" ]]; then
+    return 0
+  fi
+
+  local var val
+  for var in TELEGRAM_BOT_TOKEN DISCORD_BOT_TOKEN SLACK_BOT_TOKEN SLACK_APP_TOKEN WHATSAPP_ENABLED; do
+    val="$(grep "^${var}=" "$env_file" 2>/dev/null | cut -d'=' -f2-)" || true
+    if [[ -n "$val" && "$val" != "your-token-here" ]]; then
+      log "messaging token detected ($var); installing root gateway service"
+      hermes gateway install || log "hermes gateway install failed; run it manually: hermes gateway install"
+      return 0
+    fi
+  done
+}
+
 latest_archive_in_remote() {
   local remote="$1"
   rclone lsf "$remote" --files-only 2>/dev/null | grep -E '^hermes-.*\.zip$' | sort | tail -n 1 || true
@@ -188,4 +209,5 @@ fi
 
 hermes import "$LOCAL_ARCHIVE" --force
 enable_backup_timer
+maybe_install_root_gateway
 log "restore complete"

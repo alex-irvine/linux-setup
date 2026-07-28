@@ -420,6 +420,20 @@ log "restore complete"
 Run: `bash tests/restore-hermes.test.sh`
 Expected: `PASS: restore-hermes contract tests`
 
+> **Discovered during execution:** `test_root_gateway_skipped_when_no_messaging_token`
+> initially aborted the whole test file silently (no diagnostic, exit 1) —
+> not an assertion failure, a `set -e` abort inside the SUT itself.
+> `val="$(grep "^${var}=" "$env_file" | cut -d'=' -f2-)"` — when `grep`
+> finds no match (true for every var, in the no-token fixture), it exits 1;
+> with `pipefail` active, the pipeline's exit status becomes 1 even though
+> `cut` itself succeeded; that plain (non-`local`-prefixed) assignment's
+> exit status is the pipeline's, so `set -e` aborts the *entire script* on
+> the very first non-matching var. `install.sh`'s own `maybe_start_gateway()`
+> uses this identical `grep | cut` pattern safely — but that script doesn't
+> use `set -e` at all. Copying the logic without checking the source
+> script's strictness settings was the mistake. Fix: append `|| true` to
+> the assignment.
+
 - [ ] **Step 5: Commit**
 
 ```bash

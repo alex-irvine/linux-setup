@@ -14,6 +14,16 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    printf 'ASSERT FAILED: expected output NOT to contain: %s\n' "$needle"
+    printf 'Actual output:\n%s\n' "$haystack"
+    return 1
+  fi
+}
+
 mk_fakebin_auto_same_host() {
   local fakebin="$1"
   cat >"$fakebin/hermes" <<'EOF'
@@ -135,7 +145,76 @@ test_cross_host_auto_selects_most_recent_regardless_of_hostname() {
   assert_contains "$(cat "$TEST_LOG")" "hermes import called"
 }
 
+mk_fakebin_for_gateway_tests() {
+  local fakebin="$1"
+  cat >"$fakebin/hermes" <<'EOF'
+#!/usr/bin/env bash
+echo "hermes called: $*" >>"$TEST_LOG"
+exit 0
+EOF
+
+  cat >"$fakebin/systemctl" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+
+  cat >"$fakebin/rclone" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "lsf" && "$2" == "gdrive:hermes-backups/test-host" ]]; then
+  printf 'hermes-20260711T010000Z.zip\n'
+  exit 0
+fi
+if [[ "$1" == "copyto" ]]; then
+  dst="$4"
+  mkdir -p "$(dirname "$dst")"
+  : >"$dst"
+  exit 0
+fi
+if [[ "$1" == "listremotes" ]]; then
+  echo "gdrive:"
+  exit 0
+fi
+exit 0
+EOF
+
+  chmod +x "$fakebin/hermes" "$fakebin/systemctl" "$fakebin/rclone"
+}
+
+test_root_gateway_installed_when_messaging_token_present() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  export TEST_LOG="$tmp/log"
+  : >"$TEST_LOG"
+
+  mk_fakebin_for_gateway_tests "$tmp"
+  mkdir -p "$tmp/home/.hermes"
+  printf 'TELEGRAM_BOT_TOKEN=123456:abcdefghijklmnopqrstuvwxyz0123456789\n' >"$tmp/home/.hermes/.env"
+
+  PATH="$tmp:$PATH" HOME="$tmp/home" HOSTNAME=test-host "$SUT" --yes >/dev/null 2>&1
+
+  assert_contains "$(cat "$TEST_LOG")" "hermes called: gateway install"
+}
+
+test_root_gateway_skipped_when_no_messaging_token() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  export TEST_LOG="$tmp/log"
+  : >"$TEST_LOG"
+
+  mk_fakebin_for_gateway_tests "$tmp"
+  mkdir -p "$tmp/home/.hermes"
+  printf 'SOME_OTHER_VAR=value\n' >"$tmp/home/.hermes/.env"
+
+  PATH="$tmp:$PATH" HOME="$tmp/home" HOSTNAME=test-host "$SUT" --yes >/dev/null 2>&1
+
+  assert_not_contains "$(cat "$TEST_LOG")" "gateway install"
+}
+
 test_cross_host_auto_selects_most_recent_regardless_of_hostname
+test_root_gateway_installed_when_messaging_token_present
+test_root_gateway_skipped_when_no_messaging_token
 test_auto_same_host_restore
 # test_prompt_cross_host_restore (the old --yes + interactive-host-picker
 # scenario) was retired here: under the new resolve_cross_host_remote(),
