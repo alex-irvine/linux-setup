@@ -33,6 +33,35 @@ require_cmd() {
   }
 }
 
+offer_rclone_config() {
+  if rclone listremotes 2>/dev/null | grep -qx 'gdrive:'; then
+    return 0
+  fi
+
+  if ((ASSUME_YES == 1)) || ! (: </dev/tty) 2>/dev/null; then
+    err "gdrive remote not configured; skipping restore"
+    err "run: rclone config && rclone lsd gdrive:"
+    exit 0
+  fi
+
+  printf "gdrive remote not configured. Run 'rclone config' now to set it up? [Y/n] " >/dev/tty
+  local answer
+  read -r answer </dev/tty
+  if [[ -n "$answer" && ! "$answer" =~ ^[Yy] ]]; then
+    err "gdrive remote not configured; skipping restore"
+    err "run: rclone config && rclone lsd gdrive:"
+    exit 0
+  fi
+
+  rclone config </dev/tty >/dev/tty 2>&1 || true
+
+  if ! rclone listremotes 2>/dev/null | grep -qx 'gdrive:'; then
+    err "gdrive still not configured; skipping restore"
+    err "run: rclone config && rclone lsd gdrive:"
+    exit 0
+  fi
+}
+
 enable_backup_timer() {
   # A systemd user timer owns backup scheduling (persistent; catches up after
   # suspend/resume). Enable it after a successful restore so backups resume
@@ -159,11 +188,7 @@ done
 require_cmd hermes
 require_cmd rclone
 
-if ! rclone listremotes 2>/dev/null | grep -qx 'gdrive:'; then
-  err "gdrive remote not configured; skipping restore"
-  err "run: rclone config && rclone lsd gdrive:"
-  exit 0
-fi
+offer_rclone_config
 
 if [[ -z "$REMOTE" ]]; then
   REMOTE="$DEFAULT_REMOTE"

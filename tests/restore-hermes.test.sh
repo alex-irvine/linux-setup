@@ -212,7 +212,36 @@ test_root_gateway_skipped_when_no_messaging_token() {
   assert_not_contains "$(cat "$TEST_LOG")" "gateway install"
 }
 
+test_gdrive_not_configured_yes_flag_exits_cleanly() {
+  local tmp output rc
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  mkdir -p "$tmp/fakebin"
+  cat >"$tmp/fakebin/hermes" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  cat >"$tmp/fakebin/rclone" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "listremotes" ]]; then
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "$tmp/fakebin/hermes" "$tmp/fakebin/rclone"
+
+  set +e
+  output="$(PATH="$tmp/fakebin:$PATH" HOME="$tmp/home" HOSTNAME=test-host "$SUT" --yes 2>&1)"
+  rc=$?
+  set -e
+
+  [[ $rc -eq 0 ]]
+  assert_contains "$output" "gdrive remote not configured; skipping restore"
+}
+
 test_cross_host_auto_selects_most_recent_regardless_of_hostname
+test_gdrive_not_configured_yes_flag_exits_cleanly
 test_root_gateway_installed_when_messaging_token_present
 test_root_gateway_skipped_when_no_messaging_token
 test_auto_same_host_restore
