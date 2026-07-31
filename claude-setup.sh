@@ -80,6 +80,12 @@ claude plugin install caveman@caveman || true
 claude plugin install claude-hud@claude-hud || true
 claude plugin install mem0@mem0-plugins || true
 
+###########################################################
+# 6. MCP
+###########################################################
+claude mcp add --transport http -s user betterstack https://mcp.betterstack.com
+claude mcp add --transport http -s user composio https://connect.composio.dev/mcp
+
 cat <<'EOF'
 
 ==== Claude setup complete ====

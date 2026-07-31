@@ -106,7 +106,7 @@ fi
 # yay utils
 ###########################################################
 echo "==== Installing yay utils ===="
-yay -S --noconfirm --needed bluetuith wl-clip-persist xleak-bin sesh-bin
+yay -S --noconfirm --needed bluetuith wl-clip-persist xleak-bin sesh-bin wlctl-bin
 
 ###########################################################
 # Golang
