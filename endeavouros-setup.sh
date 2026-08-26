@@ -225,6 +225,9 @@ sudo pacman -S --noconfirm --needed tmux ruby ruby-erb
 
 gem install --user-install tmuxinator
 
+# agent-of-empires (tmux agentator)
+curl -fsSL https://raw.githubusercontent.com/agent-of-empires/agent-of-empires/main/scripts/install.sh | bash
+
 # tmuxinator installs into the user gem bindir (e.g. ~/.local/share/gem/ruby/3.4.0/bin),
 # which isn't on PATH by default. The gem bindir PATH export and the `mux`
 # alias both live in the stowed ~/.zshrc (zsh dotfiles package).
