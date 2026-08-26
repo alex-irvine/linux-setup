@@ -42,7 +42,7 @@ sudo pacman -S --noconfirm --needed \
   sway waybar wofi foot mako swaylock swayidle xorg-xwayland \
   wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
   bluez bluez-utils network-manager-applet pulsemixer stow rclone \
-  grim slurp satty task swaybg
+  grim slurp satty task swaybg uv
 
 ###########################################################
 # System config drop-ins (/etc/*)
