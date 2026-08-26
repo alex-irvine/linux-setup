@@ -13,7 +13,11 @@ sudo pacman -Syu --noconfirm
 echo "==== Installing base tools ===="
 sudo pacman -S --noconfirm --needed \
   base-devel curl wget gnupg ca-certificates unzip clang pkgconf git github-cli \
-  git-delta tailscale fzf doxx zoxide
+  git-delta tailscale fzf doxx zoxide \
+  sway waybar wofi foot mako swaylock swayidle xorg-xwayland \
+  wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
+  bluez bluez-utils network-manager-applet pulsemixer stow rclone \
+  grim slurp satty task swaybg uv bun
 
 ###########################################################
 # GitHub CLI auth — must happen BEFORE the dotfiles clone
@@ -37,12 +41,6 @@ fi
 if ! grep -q '^fs.inotify.max_user_instances=' /etc/sysctl.conf; then
   echo fs.inotify.max_user_instances=1024 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 fi
-
-sudo pacman -S --noconfirm --needed \
-  sway waybar wofi foot mako swaylock swayidle xorg-xwayland \
-  wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
-  bluez bluez-utils network-manager-applet pulsemixer stow rclone \
-  grim slurp satty task swaybg uv
 
 ###########################################################
 # System config drop-ins (/etc/*)
