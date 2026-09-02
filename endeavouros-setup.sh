@@ -14,7 +14,7 @@ echo "==== Installing base tools ===="
 sudo pacman -S --noconfirm --needed \
   base-devel curl wget gnupg ca-certificates unzip clang pkgconf git github-cli \
   git-delta tailscale fzf doxx zoxide \
-  sway waybar wofi foot mako swaylock swayidle xorg-xwayland \
+  sway waybar wofi ghostty mako swaylock swayidle xorg-xwayland \
   wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
   xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr \
   bluez bluez-utils network-manager-applet pulsemixer stow rclone \
@@ -65,10 +65,10 @@ echo "==== Cloning repos ===="
 bash "$SCRIPT_DIR/clone-repos.sh"
 
 echo "==== Clearing default configs that conflict with stow ===="
-# sway/foot/mako/nvim auto-create config dirs on first launch; clear
+# sway/ghostty/mako/nvim auto-create config dirs on first launch; clear
 # them so stow can take over. Also drop the stale per-tool config
 # files at $HOME root. Skip anything already symlinked (re-run safe).
-for d in ~/.config/sway ~/.config/mako ~/.config/foot \
+for d in ~/.config/sway ~/.config/mako ~/.config/ghostty \
   ~/.config/nvim ~/.config/tmuxinator \
   ~/.config/gtk-3.0 ~/.config/gtk-4.0 \
   ~/.config/evolution/sources ~/.config/evolution/signatures \
@@ -82,7 +82,7 @@ done
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow evolution foot git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator waybar zsh
+stow --target="$HOME" --restow evolution ghostty git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator waybar zsh
 stow --no-folding --target="$HOME" --restow claude
 cd -
 
@@ -346,9 +346,9 @@ echo "==== Installing yazi ===="
 # yazi core + previewer deps:
 #   resvg: SVG (yazi's svg previewer calls the `resvg` CLI, not rsvg-convert).
 #   ttf-jetbrains-mono-nerd: satisfies yazi's nerd-fonts group dep non-interactively
-#     (matches the foot font choice).
+#     (matches the Ghostty font choice).
 #   jq/p7zip/zoxide: yazi optdeps for json/archive previewers + cd-history.
-#   chafa: sixel image rendering in foot.
+#   chafa: terminal image rendering support.
 #   ffmpegthumbnailer/imagemagick/poppler/mediainfo/bat: thumbnailers + viewers
 #     yazi uses for video/raster/PDF/media-info/syntax-highlighted text.
 #   atool: archive listing fallback.
@@ -399,6 +399,12 @@ yay -S --noconfirm --needed azure-cli
 ###########################################################
 echo "==== Installing GitHub Copilot CLI ===="
 sudo npm install -g @github/copilot
+
+###########################################################
+# terminal-browser
+###########################################################
+echo "==== Installing terminal-browser ===="
+curl -fsSL https://terminal-browser.sh/install | bash
 
 ###########################################################
 # Gonzo (log viewer) -- gonzofk fork
@@ -573,6 +579,12 @@ bash "$SCRIPT_DIR/firecrawl-setup.sh"
 ###########################################################
 echo "==== Running opencode-setup.sh ===="
 bash "$SCRIPT_DIR/opencode-setup.sh"
+
+###########################################################
+# pi (AI coding agent)
+###########################################################
+echo "==== Running pi-setup.sh ===="
+bash "$SCRIPT_DIR/pi-setup.sh"
 
 echo "==== Running hermes-setup.sh ===="
 bash "$SCRIPT_DIR/hermes-setup.sh"

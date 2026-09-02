@@ -24,7 +24,7 @@ Sudo password cached for pacman/yay.
 ## What it does
 
 1. pacman base tools + `github-cli` → `gh auth login` (gates dotfiles clone).
-2. Clones `~/dotfiles` and stows every package (sway, foot, mako, nvim,
+2. Clones `~/dotfiles` and stows every package (sway, ghostty, mako, nvim,
    tmux, tmuxinator, waybar, zsh, gtk, systemd, git, k9s, lazygit,
    **claude**, **opencode**, **hermes**).
 3. Installs apps + CLIs: yay, Go, Node, Neovim, Nerd Fonts, Rust,
