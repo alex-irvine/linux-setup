@@ -12,9 +12,9 @@ CONTENT="$(cat "$FILE")"
   exit 1
 }
 
-[[ "$CONTENT" == *"agent-lib.git"* && "$CONTENT" == *"~/Proj/agent-lib"* ]] || {
-  echo "FAIL: agent-lib clone wireup missing in clone-repos.sh"
+[[ "$CONTENT" == *"hermes-bots.git"* && "$CONTENT" == *"~/Proj/hermes-bots"* ]] || {
+  echo "FAIL: hermes-bots clone wireup missing in clone-repos.sh"
   exit 1
 }
 
-echo "PASS: agent-lib clone wireup present; firecrawl clone intentionally absent"
+echo "PASS: hermes-bots clone wireup present; firecrawl clone intentionally absent"

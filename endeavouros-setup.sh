@@ -82,7 +82,8 @@ done
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow claude evolution foot git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator waybar zsh
+stow --target="$HOME" --restow evolution foot git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator waybar zsh
+stow --no-folding --target="$HOME" --restow claude
 cd -
 
 echo "==== Setting dark color-scheme (dconf) ===="
@@ -579,31 +580,27 @@ bash "$SCRIPT_DIR/hermes-setup.sh"
 echo "==== Running mem0-setup.sh ===="
 bash "$SCRIPT_DIR/mem0-setup.sh"
 
-echo "==== Restowing Hermes config (skills + scripts come from agent-lib) ===="
+echo "==== Restowing Hermes config, skills, and persona ===="
 cd ~/dotfiles
-# The hermes dotfiles package now holds only config.yaml (settings). Authored
-# skills, SOUL.md, scripts, and hstandup tooling live in ~/Proj/agent-lib and
-# are symlinked by its install.sh below. Keep the target dir real so generated
-# sidecars (for example Python __pycache__) stay in $HOME, not the source repo.
+# Keep the target directory real so bundled/runtime skills can coexist with the
+# authored Stow-managed skills and generated sidecars remain under $HOME.
 stow --no-folding --target="$HOME" --restow hermes
 cd -
 
-echo "==== Installing agent-lib (authored skills/agents/commands/SOUL/tooling) ===="
-# Symlinks personally-authored content into ~/.claude, ~/.hermes, ~/.local.
-# Runs after the provider installs so the bundled Hermes catalog already
-# exists (authored skills are symlinked alongside it), and BEFORE the Hermes
-# backup bootstrap below, which uses ~/.hermes/scripts/hermes-backup-gdrive.sh.
-if [ -x ~/Proj/agent-lib/install.sh ]; then
-  ~/Proj/agent-lib/install.sh
+echo "==== Installing hermes-bots runtime ===="
+# Exposes bot executables and copies files that Hermes requires to be real.
+if [ -x ~/Proj/hermes-bots/install.sh ]; then
+  ~/Proj/hermes-bots/install.sh
 else
-  echo "WARN: ~/Proj/agent-lib/install.sh missing; run clone-repos.sh first" >&2
+  echo "ERROR: ~/Proj/hermes-bots/install.sh missing; run clone-repos.sh first" >&2
+  exit 1
 fi
 
 ###########################################################
 # Hermes backup (systemd user timer)
 #
 # Persistent daily timer runs ~/.hermes/scripts/hermes-backup-gdrive.sh (a real
-# file installed by agent-lib/install.sh). Persistent=true catches up missed
+# file installed by hermes-bots/install.sh). Persistent=true catches up missed
 # runs after suspend/resume — this laptop is usually suspended at the 03:00
 # target, and hermes' own cron has no catch-up. Units are stowed from the
 # dotfiles `systemd` package; here we ensure lingering + enable the timer.

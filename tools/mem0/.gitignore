@@ -1,0 +1,11 @@
+# Local environments and caches
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+*.py[cod]
+
+# Local-only configuration and test output
+.env
+.coverage
+htmlcov/

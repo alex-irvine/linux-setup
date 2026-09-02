@@ -56,7 +56,7 @@ daily at 03:00. `Persistent=true` means a run missed while the laptop is
 suspended/off fires shortly after the next resume — so a machine asleep at 3am
 still gets backed up. Lingering is enabled so it runs without an active session.
 (The backup script itself is copied, not symlinked, into `~/.hermes/scripts` by
-`agent-lib/install.sh` — Hermes sandboxes cron scripts to that directory.)
+`hermes-bots/install.sh` — Hermes sandboxes cron scripts to that directory.)
 
 First-run activation:
 

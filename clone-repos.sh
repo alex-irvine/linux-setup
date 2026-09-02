@@ -29,11 +29,10 @@ clone_or_pull https://github.com/alex-irvine/dotfiles.git ~/dotfiles
 echo "==== Cloning .triage ===="
 clone_or_pull https://github.com/alex-irvine/.triage.git ~/Proj/.triage
 
-echo "==== Cloning agent-lib ===="
-# Personally-authored agent content (skills, subagents, commands, SOUL,
-# hstandup tooling). Installed by agent-lib/install.sh in endeavouros-setup.sh,
-# not stow. See agent-lib/MANIFEST.md for the provenance boundary.
-clone_or_pull https://github.com/alex-irvine/agent-lib.git ~/Proj/agent-lib
+echo "==== Cloning hermes-bots ===="
+# Hermes-specific bots and automation. Provider-visible skills and adapters are
+# stowed from dotfiles; non-Stowable bot runtime is installed below.
+clone_or_pull https://github.com/alex-irvine/hermes-bots.git ~/Proj/hermes-bots
 
 echo "==== Cloning tmux plugins ===="
 clone_or_pull https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm

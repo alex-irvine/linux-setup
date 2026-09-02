@@ -7,9 +7,8 @@ set -e
 # Installs Claude Code CLI, rtk, and registers marketplaces +
 # plugins (caveman, claude-hud).
 #
-# ~/.claude/settings.json comes from the `claude` stow package in
-# ~/dotfiles; agents/commands come from ~/Proj/agent-lib via its
-# install.sh. Both are applied by endeavouros-setup.sh. Run that first.
+# ~/.claude settings, agents, and commands come from the `claude` Stow package
+# in ~/dotfiles. They are applied by endeavouros-setup.sh; run that first.
 #
 # Standalone and idempotent — safe to re-run.
 ###########################################################

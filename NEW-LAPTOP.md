@@ -56,11 +56,9 @@ agent-created skills.
 - `~/.hermes/hermes-agent` (the agent code itself) — reinstalled fresh via
   the official installer (`curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash`,
   run by `hermes-setup.sh`), not restored from a zip. Code isn't state.
-- `config.yaml` and `SOUL.md` — these are symlinks on this host
-  (`config.yaml -> ../dotfiles/hermes/.hermes/config.yaml`,
-  `SOUL.md -> ~/Proj/agent-lib/providers/hermes/SOUL.md`), and Hermes's own
+- `config.yaml` and `SOUL.md` — these are symlinks into `~/dotfiles/hermes`, and Hermes's own
   backup skips symlinks unconditionally. They're recreated independently by
-  dotfiles-stow and `agent-lib/install.sh` during the normal bootstrap flow
+  dotfiles-stow during the normal bootstrap flow
   (step 1), not by `hermes import`. If you ever see these "missing" from a
   restored backup, that's expected — don't go looking for a bug here.
 - `~/.config/rclone/rclone.conf` — see step 2. Can't be included in the

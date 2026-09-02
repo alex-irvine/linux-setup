@@ -15,13 +15,23 @@ CONTENT="$(cat "$FILE")"
   exit 1
 }
 
-[[ "$CONTENT" == *'echo "==== Restowing Hermes config (skills + scripts come from agent-lib) ===="'* ]] || {
-  echo "FAIL: Hermes restow echo not updated for agent-lib split"
+[[ "$CONTENT" == *'stow --no-folding --target="$HOME" --restow claude'* ]] || {
+  echo "FAIL: missing non-folding Claude restow for agents and commands"
   exit 1
 }
 
-[[ "$CONTENT" == *'~/Proj/agent-lib/install.sh'* ]] || {
-  echo "FAIL: missing agent-lib install invocation"
+[[ "$CONTENT" == *'echo "==== Restowing Hermes config, skills, and persona ===="'* ]] || {
+  echo "FAIL: Hermes restow description is stale"
+  exit 1
+}
+
+[[ "$CONTENT" == *'~/Proj/hermes-bots/install.sh'* ]] || {
+  echo "FAIL: missing hermes-bots install invocation"
+  exit 1
+}
+
+[[ "$CONTENT" == *'ERROR: ~/Proj/hermes-bots/install.sh missing; run clone-repos.sh first'* ]] || {
+  echo "FAIL: missing hermes-bots fail-fast error"
   exit 1
 }
 
