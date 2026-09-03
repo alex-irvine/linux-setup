@@ -395,12 +395,6 @@ echo "==== Installing Azure CLI ===="
 yay -S --noconfirm --needed azure-cli
 
 ###########################################################
-# GitHub Copilot CLI
-###########################################################
-echo "==== Installing GitHub Copilot CLI ===="
-sudo npm install -g @github/copilot
-
-###########################################################
 # terminal-browser
 ###########################################################
 echo "==== Installing terminal-browser ===="
