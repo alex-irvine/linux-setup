@@ -30,10 +30,13 @@ class OllamaClient:
             with urlopen(request, timeout=self.timeout) as response:
                 payload = json.loads(response.read())
             vectors = payload["embeddings"]
-            if len(vectors) != len(texts):
-                return DegradedStatus("unexpected embedding count")
+            if (not isinstance(vectors, list) or len(vectors) != len(texts)
+                    or any(not isinstance(vector, list) or not vector for vector in vectors)
+                    or any(not isinstance(value, (int, float)) or isinstance(value, bool)
+                           for vector in vectors for value in vector)):
+                return DegradedStatus("invalid embedding response")
             return EmbeddingBatch([[float(value) for value in vector] for vector in vectors])
-        except (OSError, URLError, ValueError, KeyError, json.JSONDecodeError) as error:
+        except (OSError, URLError, TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
             return DegradedStatus(str(error))
 
     def review_capture(self, candidate: dict) -> dict | DegradedStatus:

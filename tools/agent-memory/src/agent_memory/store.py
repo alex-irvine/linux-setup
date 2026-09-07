@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import fcntl
 import json
+import math
 import os
 import secrets
 import tempfile
@@ -630,7 +631,12 @@ class MemoryService:
         if len(vectors) != count or not vectors or not all(isinstance(vector, list) and vector for vector in vectors):
             return False
         expected = dimension if dimension is not None else len(vectors[0])
-        return expected > 0 and all(len(vector) == expected for vector in vectors)
+        return expected > 0 and all(
+            len(vector) == expected
+            and all(isinstance(value, (int, float)) and not isinstance(value, bool)
+                    and math.isfinite(float(value)) for value in vector)
+            for vector in vectors
+        )
 
     def update(self, request: UpdateRequest) -> MemoryRecord:
         return self.store.update(request, self.index)

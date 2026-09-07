@@ -109,7 +109,7 @@ def test_fused_ranking_is_deterministic_for_lexical_and_semantic_only_hits(tmp_p
     assert first.memories[0]["lexical_rank"] == 1
 
 
-@pytest.mark.parametrize("kind", ["empty", "count", "dimension"])
+@pytest.mark.parametrize("kind", ["empty", "count", "dimension", "scalar", "nonnumeric", "nonlist"])
 def test_local_ollama_invalid_embedding_batches_fall_back_to_lexical(tmp_path, kind):
     from agent_memory.index import MemoryIndex
     from agent_memory.model import AddRequest, SearchQuery
@@ -124,7 +124,13 @@ def test_local_ollama_invalid_embedding_batches_fall_back_to_lexical(tmp_path, k
             return []
         if kind == "count":
             return [[1.0, 0.0]]
-        return [[1.0, 0.0]] if len(texts) == 1 else [[1.0], [1.0, 0.0]]
+        if kind == "dimension":
+            return [[1.0, 0.0]] if len(texts) == 1 else [[1.0], [1.0, 0.0]]
+        if kind == "scalar":
+            return [1.0 for _ in texts]
+        if kind == "nonnumeric":
+            return [["invalid", 0.0] for _ in texts]
+        return "invalid"
     with ollama(vectors) as url:
         service.ollama = OllamaClient(url)
         result = service.search(SearchQuery("lexical"))
