@@ -62,7 +62,7 @@ def test_sync_discovers_direct_edits_and_retains_retryable_failures(git_fixture)
     assert report["sync"]["reconciled"] is True
 
     peer = repo.parent / "peer"
-    subprocess.run(["git", "clone", str(remote), str(peer)], text=True, capture_output=True, check=True)
+    subprocess.run(["git", "clone", "-b", "main", str(remote), str(peer)], text=True, capture_output=True, check=True)
     git(peer, "config", "user.email", "test@example.invalid")
     git(peer, "config", "user.name", "Test")
     (peer / "peer").write_text("ahead", encoding="utf-8")
@@ -70,8 +70,10 @@ def test_sync_discovers_direct_edits_and_retains_retryable_failures(git_fixture)
     git(peer, "commit", "-m", "peer ahead")
     git(peer, "push")
     memory(repo, env, "add", "--request-id", "retry", "--type", "fact", "--scope", "global", "--content", "retry")
+    assert memory(repo, env, "status")["outbox"]["ready"] >= 1
     failed = memory(repo, env, "worker", "--drain")
-    assert failed["retrying"] >= 1
+    assert failed["sync"], failed
+    assert failed["retrying"] >= 1, failed
     assert list((tmp_path := repo.parent / "state" / "outbox" / "ready").glob("*.json"))
 
 
@@ -87,3 +89,64 @@ def test_sync_pause_and_index_lock_retain_work(git_fixture):
     retained = memory(repo, env, "worker", "--drain")
     assert retained["retrying"] >= 1
     assert list((repo.parent / "state" / "outbox" / "ready").glob("*.json"))
+
+
+@pytest.mark.parametrize("vault_relpath", [".", "../", "/tmp", "agents/.agents/memory/../other"])
+def test_sync_rejects_malicious_vault_paths_before_git_operations(git_fixture, vault_relpath):
+    repo, _, env = git_fixture
+    before = git(repo, "rev-parse", "HEAD").stdout
+    memory(repo, env, "enqueue", "--kind", "sync", "--json-input", "-", input=json.dumps({"repo": str(repo), "vault_relpath": vault_relpath}))
+    report = memory(repo, env, "worker", "--drain")
+    assert report["sync"]["error"] == "invalid vault path"
+    assert git(repo, "rev-parse", "HEAD").stdout == before
+
+
+def test_hook_failure_restores_index_and_crash_gap_recreates_sync(git_fixture):
+    repo, _, env = git_fixture
+    (repo / "unrelated").write_text("staged", encoding="utf-8")
+    git(repo, "add", "unrelated")
+    before_index = git(repo, "write-tree").stdout
+    hook = repo / ".git/hooks/pre-commit"
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    memory(repo, env, "add", "--request-id", "hook", "--type", "fact", "--scope", "global", "--content", "hook failure")
+    for path in (repo.parent / "state" / "outbox" / "ready").glob("*.json"):
+        path.unlink()  # Simulate a crash after the canonical mutation but before queue append.
+    failed = memory(repo, env, "worker", "--drain")
+    assert failed["retrying"] >= 1
+    assert git(repo, "write-tree").stdout == before_index
+    assert list((repo.parent / "state" / "outbox" / "ready").glob("*.json"))
+
+
+def test_sync_preserves_deleted_mode_and_symlink_worktree_state(git_fixture):
+    repo, _, env = git_fixture
+    deleted, mode_changed, link = repo / "deleted", repo / "mode", repo / "link"
+    deleted.write_text("tracked", encoding="utf-8")
+    mode_changed.write_text("tracked", encoding="utf-8")
+    link.symlink_to("mode")
+    git(repo, "add", "deleted", "mode", "link")
+    git(repo, "commit", "-m", "worktree fixtures")
+    deleted.unlink()
+    mode_changed.chmod(0o755)
+    link.unlink()
+    link.symlink_to("deleted")
+    before = git(repo, "status", "--porcelain=v1").stdout
+    memory(repo, env, "add", "--request-id", "states", "--type", "fact", "--scope", "global", "--content", "preserve states")
+    memory(repo, env, "worker", "--drain")
+    after = "\n".join(line for line in git(repo, "status", "--porcelain=v1").stdout.splitlines() if "agents/.agents/memory" not in line and line != "?? agents/")
+    assert after + "\n" == before
+    assert not deleted.exists() and mode_changed.stat().st_mode & 0o111 and os.readlink(link) == "deleted"
+
+
+def test_mutation_wakeup_is_nonblocking_and_fail_soft(git_fixture, tmp_path):
+    repo, _, env = git_fixture
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    wake = bin_dir / "systemctl"
+    wake.write_text("#!/bin/sh\nprintf '%s' \"$*\" > \"$WAKE_LOG\"\nexit 1\n", encoding="utf-8")
+    wake.chmod(0o755)
+    env = {**env, "PATH": str(bin_dir), "WAKE_LOG": str(tmp_path / "wake.log")}
+    created = memory(repo, env, "add", "--request-id", "wake", "--type", "fact", "--scope", "global", "--content", "wake safely")
+    assert created["content"] == "wake safely"
+    assert (tmp_path / "wake.log").read_text(encoding="utf-8") == "--user start --no-block agent-memory-worker.service"
+    assert memory(repo, env, "status")["sync_state"]["scheduling_error"] == "agent-memory worker wakeup failed"

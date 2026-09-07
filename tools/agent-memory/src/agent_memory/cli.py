@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from uuid import UUID
@@ -168,9 +170,12 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
     if args.command == "sync":
         marker = service.store.home / "sync-paused.json"
         if args.sync_command == "pause":
-            marker.write_text(json.dumps({"reason": args.reason, "at": __import__("agent_memory.model", fromlist=["utc_now"]).utc_now()}), encoding="utf-8")
+            from .capture import atomic_json
+            with Outbox(service.store.home).locked():
+                atomic_json(marker, {"reason": args.reason, "at": __import__("agent_memory.model", fromlist=["utc_now"]).utc_now()})
             return {"paused": True, "reason": args.reason}
-        marker.unlink(missing_ok=True)
+        with Outbox(service.store.home).locked():
+            marker.unlink(missing_ok=True)
         return {"paused": False}
     raise MemoryError("invalid_request", "unsupported command")
 
@@ -180,8 +185,15 @@ def main(argv: list[str] | None = None) -> int:
         args = parser().parse_args(argv)
         service = service_from_env()
         value = dispatch(service, args)
-        if args.command in {"add", "update", "delete", "pin", "scope", "purge", "delete-all"} and os.environ.get("AGENT_MEMORY_REPO"):
-            Worker(service, service.store.home, Path(os.environ["AGENT_MEMORY_REPO"])).queue_sync()
+        if args.command in {"add", "update", "delete", "pin", "scope", "purge", "delete-all"}:
+            try:
+                Worker(service, service.store.home, Path(os.environ["AGENT_MEMORY_REPO"]) if os.environ.get("AGENT_MEMORY_REPO") else None).ensure_dirty_sync()
+                if shutil.which("systemctl"):
+                    wake = subprocess.run(["systemctl", "--user", "start", "--no-block", "agent-memory-worker.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    if wake.returncode:
+                        raise OSError("agent-memory worker wakeup failed")
+            except (OSError, ValueError) as error:
+                service.store.scheduling_failed(error)
         print(json.dumps({"ok": True, "result": result(value)}, separators=(",", ":")))
         return 0
     except MemoryError as error:

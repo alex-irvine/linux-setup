@@ -38,3 +38,15 @@ def test_capture_rejects_unsafe_and_transient_candidates_and_recovers_running_wo
     records = run(env, "list", "--status", "active")["result"]["memories"]
     assert [record["content"] for record in records] == ["Use detailed status updates for incident reports."]
     assert run(env, "status")["result"]["outbox"]["ready"] == 0
+
+
+def test_concurrent_workers_claim_each_envelope_once(tmp_path):
+    env = {"AGENT_MEMORY_HOME": str(tmp_path / "state"), "AGENT_MEMORY_VAULT": str(tmp_path / "vault")}
+    for number in range(4):
+        run(env, "enqueue", "--kind", "capture", "--json-input", "-", input=json.dumps({"id": str(number), "content": "Task status: in progress"}))
+    workers = [subprocess.Popen([sys.executable, "-m", "agent_memory.cli", "worker", "--drain"], env={**os.environ, **env}, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) for _ in range(2)]
+    for worker in workers:
+        stdout, stderr = worker.communicate(timeout=10)
+        assert worker.returncode == 0, stderr or stdout
+    counts = run(env, "status")["result"]["outbox"]
+    assert counts == {"ready": 0, "running": 0, "done": 4}

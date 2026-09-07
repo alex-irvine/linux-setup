@@ -126,6 +126,53 @@ class MarkdownStore:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
+        self._mark_sync_dirty()
+
+    @property
+    def sync_state_path(self) -> Path:
+        return self.home / "sync-state.json"
+
+    def _sync_state(self) -> dict:
+        return json.loads(self.sync_state_path.read_text(encoding="utf-8")) if self.sync_state_path.exists() else {"generation": 0, "acknowledged": 0, "scheduling_error": None}
+
+    def _write_json_atomic(self, path: Path, value: dict) -> None:
+        descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+                json.dump(value, file, sort_keys=True, separators=(",", ":"))
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temporary, path)
+            directory = os.open(path.parent, os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+
+    def _mark_sync_dirty(self) -> None:
+        state = self._sync_state()
+        state["generation"] += 1
+        self._write_json_atomic(self.sync_state_path, state)
+
+    def sync_dirty(self) -> bool:
+        state = self._sync_state()
+        return state["generation"] > state["acknowledged"]
+
+    def acknowledge_sync(self) -> None:
+        with self._locked():
+            state = self._sync_state()
+            state["acknowledged"] = state["generation"]
+            state["scheduling_error"] = None
+            self._write_json_atomic(self.sync_state_path, state)
+
+    def scheduling_failed(self, error: Exception) -> None:
+        with self._locked():
+            state = self._sync_state()
+            state["scheduling_error"] = str(error)
+            self._write_json_atomic(self.sync_state_path, state)
 
     def add(self, request: AddRequest, index: MemoryIndex) -> MemoryRecord:
         payload_hash = request_hash("add", {**request.__dict__, "tags": list(request.tags)})
@@ -478,7 +525,8 @@ class MemoryService:
         from .capture import Outbox
         paused = self.store.home / "sync-paused.json"
         return {"semantic_status": "available" if available else "unavailable", "invalid_notes": [note.to_dict() for note in invalid],
-                "outbox": Outbox(self.store.home).counts(), "sync_paused": json.loads(paused.read_text(encoding="utf-8")) if paused.exists() else None}
+                "outbox": Outbox(self.store.home).counts(), "sync_paused": json.loads(paused.read_text(encoding="utf-8")) if paused.exists() else None,
+                "sync_state": self.store._sync_state()}
 
     def authorize(self, action: str, ttl: int) -> dict:
         return self.store.authorize(action, ttl)
