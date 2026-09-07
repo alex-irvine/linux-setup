@@ -79,6 +79,9 @@ class GitSync:
         repo = repo.resolve()
         vault = repo / vault_relpath
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        # Reconciliation owns the same mutation lock and may repair canonical paths.
+        # Do it before taking the Git critical section to avoid self-deadlocking flock.
+        reconciled = reconcile() if reconcile else None
         with self.lock_path.open("a+") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             before_index = None
@@ -88,7 +91,6 @@ class GitSync:
                 unsafe = self._unsafe_state(repo)
                 if unsafe:
                     return SyncReport(error=f"unsafe git state: {unsafe}", retryable=True)
-                reconciled = reconcile() if reconcile else None
                 changed = self._git(repo, "status", "--porcelain=v1", "--", str(vault_relpath)).stdout.splitlines()
                 for line in changed:
                     path = repo / line[3:]

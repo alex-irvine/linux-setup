@@ -49,3 +49,18 @@ class OllamaClient:
             return review
         except (OSError, URLError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
             return DegradedStatus(str(error))
+
+    def review_relation(self, candidate: str, existing: str) -> str | DegradedStatus:
+        request = Request(f"{self.url}/api/generate", data=json.dumps({"stream": False,
+            "prompt": "Return strict JSON only: {\"relation\":\"duplicate|contradiction|distinct\"}. "
+                      "Decide the factual relation between candidate and existing. "
+                      + json.dumps({"candidate": candidate, "existing": existing}, sort_keys=True)}).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                result = json.loads(json.loads(response.read())["response"])
+            if set(result) != {"relation"} or result["relation"] not in {"duplicate", "contradiction", "distinct"}:
+                return DegradedStatus("invalid relation review")
+            return result["relation"]
+        except (OSError, URLError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
+            return DegradedStatus(str(error))

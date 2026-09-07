@@ -184,8 +184,16 @@ class Worker:
         embedded = self.service.ollama.embed([content, *[record.content for record in records]])
         if isinstance(embedded, DegradedStatus) or len(embedded.vectors) != len(records) + 1 or not embedded.vectors or any(len(vector) != len(embedded.vectors[0]) for vector in embedded.vectors):
             raise RuntimeError("capture embedding unavailable")
-        if any(cosine(embedded.vectors[0], vector) >= 0.97 for vector in embedded.vectors[1:]):
-            report["rejected_by_reason"].append("semantic_duplicate"); return
+        for prior, vector in zip(records, embedded.vectors[1:]):
+            if cosine(embedded.vectors[0], vector) < 0.97:
+                continue
+            if str(prior.id) in candidate["supersedes"]:
+                continue
+            relation = self.service.ollama.review_relation(content, prior.content)
+            if isinstance(relation, DegradedStatus):
+                raise RuntimeError("capture relation reviewer unavailable")
+            if relation == "duplicate":
+                report["rejected_by_reason"].append("semantic_duplicate"); return
         mapping = self.home / "capture-ids.json"
         with self.outbox.locked():
             capture_ids = json.loads(mapping.read_text(encoding="utf-8")) if mapping.exists() else {}

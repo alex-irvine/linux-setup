@@ -1,9 +1,17 @@
 import hashlib
 import json
+import multiprocessing
+from pathlib import Path
 
 from agent_memory.migration import MigrationService
 from agent_memory.store import MarkdownStore, MemoryService
 from agent_memory.index import MemoryIndex
+
+
+def _concurrent_import(root: str) -> None:
+    root_path = Path(root)
+    service = MemoryService(MarkdownStore(root_path / "vault", root_path / "state"), MemoryIndex(root_path / "state" / "memory.sqlite3"))
+    MigrationService(service, root_path / "state", root_path / "archive", root_path / "hermes", root_path / "claude", root_path / "project_map.json").import_local("concurrent")
 
 
 def test_migration_is_resumable_and_accounts_for_every_source(tmp_path):
@@ -74,3 +82,23 @@ def test_migration_is_resumable_and_accounts_for_every_source(tmp_path):
     for entry in manifest["sources"]:
         snapshot = tmp_path / "state" / "snapshots" / batch / entry["raw_snapshot"]
         assert hashlib.sha256(snapshot.read_bytes()).hexdigest() == entry["source_hash"]
+
+
+def test_migration_same_batch_processes_serialize_without_duplicate_imports(tmp_path):
+    archive, hermes, claude = tmp_path / "archive", tmp_path / "hermes", tmp_path / "claude"
+    archive.mkdir(); hermes.mkdir(); claude.mkdir()
+    for number in range(3):
+        (archive / f"fixture-{number}.md").write_text(f"Synthetic migration fixture {number}.", encoding="utf-8")
+    (tmp_path / "project_map.json").write_text("{}", encoding="utf-8")
+    service = MemoryService(MarkdownStore(tmp_path / "vault", tmp_path / "state"), MemoryIndex(tmp_path / "state" / "memory.sqlite3"))
+    migration = MigrationService(service, tmp_path / "state", archive, hermes, claude, tmp_path / "project_map.json")
+    assert migration.snapshot("concurrent")["snapshot"] == "created"
+    processes = [multiprocessing.get_context("fork").Process(target=_concurrent_import, args=(str(tmp_path),)) for _ in range(2)]
+    for process in processes: process.start()
+    for process in processes: process.join(10); assert process.exitcode == 0
+    rows = migration._rows("concurrent")
+    assert len(rows) == 3
+    assert len({row["source_identity"] for row in rows}) == 3
+    assert all(len(row["imported_ids"]) == 1 for row in rows)
+    assert migration.verify("concurrent")["verified"] is True
+    assert migration.report("concurrent")["unaccounted_sources"] == 0

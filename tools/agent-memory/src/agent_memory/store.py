@@ -36,6 +36,7 @@ class MarkdownStore:
         self.audit_path = home / "audit.jsonl"
         self.authorizations_path = home / "authorizations.json"
         self.conflicts = vault / "Conflicts"
+        self._lock_depth = 0
         self.global_notes.mkdir(parents=True, exist_ok=True)
         self.projects.mkdir(parents=True, exist_ok=True)
         self.home.mkdir(parents=True, exist_ok=True)
@@ -45,8 +46,10 @@ class MarkdownStore:
         with self.lock_path.open("a+") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             try:
+                self._lock_depth += 1
                 yield
             finally:
+                self._lock_depth -= 1
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
     @staticmethod
@@ -71,7 +74,71 @@ class MarkdownStore:
         # An interrupted move may briefly leave two files. Prefer the newest canonical location.
         return max(records, key=lambda item: (item[0].revision, item[1] == self._path_for(item[0]), str(item[1])))[1]
 
+    def _quarantine(self, path: Path, record: MemoryRecord) -> None:
+        self.conflicts.mkdir(parents=True, exist_ok=True)
+        destination = self.conflicts / f"{record.id}.{record.revision}.{path.parent.name}.md"
+        suffix = 1
+        while destination.exists():
+            destination = self.conflicts / f"{record.id}.{record.revision}.{path.parent.name}.{suffix}.md"
+            suffix += 1
+        os.replace(path, destination)
+        self._fsync_dir(path.parent)
+        self._fsync_dir(destination.parent)
+
+    @staticmethod
+    def _preferred(left: tuple[MemoryRecord, Path], right: tuple[MemoryRecord, Path]) -> tuple[MemoryRecord, Path]:
+        """Choose a duplicate deterministically without considering note body text."""
+        return max((left, right), key=lambda item: (item[0].revision, item[0].updated_at,
+                                                     item[0].content_hash, str(item[1])))
+
+    def _relocate(self, path: Path, record: MemoryRecord) -> Path:
+        destination = self._path_for(record)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if path == destination:
+            return path
+        if destination.exists():
+            incumbent = record_from_dict(frontmatter.load(destination.read_text(encoding="utf-8")))
+            if incumbent.content_hash == record.content_hash:
+                path.unlink()
+                self._fsync_dir(path.parent)
+                return destination
+            winner = self._preferred((record, path), (incumbent, destination))
+            if winner[1] == path:
+                self._quarantine(destination, incumbent)
+                os.replace(path, destination)
+                self._fsync_dir(path.parent)
+                self._fsync_dir(destination.parent)
+                return destination
+            self._quarantine(path, record)
+            return destination
+        os.replace(path, destination)
+        self._fsync_dir(path.parent)
+        self._fsync_dir(destination.parent)
+        return destination
+
+    def _repair_layout(self) -> int:
+        """Complete interrupted scope moves before an index can observe the wrong path."""
+        repaired = 0
+        paths = [*self.global_notes.glob("*.md"), *self.projects.glob("*/*.md")]
+        for path in sorted(paths):
+            if not path.exists():
+                continue
+            try:
+                record = record_from_dict(frontmatter.load(path.read_text(encoding="utf-8")))
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+            if self._relocate(path, record) != path:
+                repaired += 1
+        return repaired
+
+    def repair_layout(self) -> int:
+        if self._lock_depth:
+            return self._repair_layout()
+        with self._locked():
+            return self._repair_layout()
+
     def get(self, memory_id: UUID) -> MemoryRecord:
+        self.repair_layout()
         path = self._path(memory_id)
         if not path.exists():
             raise MemoryError("not_found", f"memory {memory_id} does not exist")
@@ -109,9 +176,8 @@ class MarkdownStore:
                 finally:
                     os.close(descriptor)
                 os.replace(temporary, path)
-                os.replace(path, destination)
                 self._fsync_dir(path.parent)
-                self._fsync_dir(destination.parent)
+                self._relocate(path, record)
                 moved += 1
         return {"moved": moved, "remaining": len(list(self.notes.glob("*.md")))}
 
@@ -496,7 +562,7 @@ class MemoryService:
         semantic_ranks: dict[str, int] = {}
         semantic_status = "unavailable"
         embedded = self.ollama.embed([query.query])
-        if not isinstance(embedded, DegradedStatus):
+        if not isinstance(embedded, DegradedStatus) and self._valid_vectors(embedded.vectors, 1):
             vectors = self.index.embeddings(candidates)
             dimensions = len(embedded.vectors[0])
             incompatible = [memory_id for memory_id, vector in vectors.items() if len(vector) != dimensions]
@@ -505,7 +571,7 @@ class MemoryService:
             missing = [record for record in candidates if str(record.id) not in vectors]
             if missing:
                 generated = self.ollama.embed([record.content for record in missing])
-                if not isinstance(generated, DegradedStatus):
+                if not isinstance(generated, DegradedStatus) and self._valid_vectors(generated.vectors, len(missing), dimensions):
                     self.index.remember_embeddings(missing, generated.vectors)
                     vectors.update({str(record.id): vector for record, vector in zip(missing, generated.vectors)})
             if vectors:
@@ -544,8 +610,15 @@ class MemoryService:
             hit.update({"score": score, "lexical_rank": lexical_rank, "semantic_rank": semantic_rank,
                         "boosts": boosts, "explanation": {"rrf": "1 / (60 + rank)", "positive": positive, "negative": negative, "boost_contributions": contributions}})
             hits.append(hit)
-        hits.sort(key=lambda hit: (hit["lexical_rank"] is None, -hit["score"], hit["id"]))
+        hits.sort(key=lambda hit: (-hit["score"], hit["id"]))
         return SearchResult(hits, semantic_status)
+
+    @staticmethod
+    def _valid_vectors(vectors: list[list[float]], count: int, dimension: int | None = None) -> bool:
+        if len(vectors) != count or not vectors or not all(isinstance(vector, list) and vector for vector in vectors):
+            return False
+        expected = dimension if dimension is not None else len(vectors[0])
+        return expected > 0 and all(len(vector) == expected for vector in vectors)
 
     def update(self, request: UpdateRequest) -> MemoryRecord:
         return self.store.update(request, self.index)
@@ -570,6 +643,7 @@ class MemoryService:
                 yield path, None, str(error)
 
     def reconcile(self) -> ReconcileReport:
+        self.store.repair_layout()
         edits, invalid, excluded = [], [], []
         for path, record, error in self._notes():
             if record is None:
@@ -585,6 +659,7 @@ class MemoryService:
         return ReconcileReport(edits, invalid, excluded, [str(path) for path in sorted(self.store.conflicts.glob("*.md"))] if self.store.conflicts.exists() else [])
 
     def rebuild(self) -> RebuildReport:
+        self.store.repair_layout()
         self.index.clear()
         invalid, active, records = [], 0, []
         for path, record, error in self._notes():

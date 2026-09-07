@@ -94,3 +94,70 @@ updated_at: "2026-01-01T00:00:00Z"
     assert moved.read_bytes().split(b"\n---\n", 1)[1] == body
     header = moved.read_bytes().split(b"\n---\n", 1)[0]
     assert b"source_session:" in header and b"supersedes:" in header
+
+
+def test_rebuild_repairs_interrupted_scope_moves_in_both_directions(tmp_path):
+    from agent_memory.index import MemoryIndex
+    from agent_memory.model import AddRequest, ScopeRequest
+    from agent_memory.store import MarkdownStore, MemoryService
+
+    vault, home = tmp_path / "vault", tmp_path / "state"
+    service = MemoryService(MarkdownStore(vault, home), MemoryIndex(home / "index.sqlite3"))
+    project = service.add(AddRequest("project", "fact", "project", "Synthetic project fixture.", "alpha"))
+    moved_global = service.scope(ScopeRequest(project.id, project.revision, project.content_hash, "move-global", "global", None))
+    global_path = vault / "Global" / f"{project.id}.md"
+    wrong_project = vault / "Projects" / "alpha" / f"{project.id}.md"
+    global_path.replace(wrong_project)
+    global_record = service.add(AddRequest("global", "fact", "global", "Synthetic global fixture."))
+    moved_project = service.scope(ScopeRequest(global_record.id, global_record.revision, global_record.content_hash, "move-project", "project", "beta"))
+    project_path = vault / "Projects" / "beta" / f"{global_record.id}.md"
+    wrong_global = vault / "Global" / f"{global_record.id}.md"
+    project_path.replace(wrong_global)
+
+    service.rebuild()
+
+    assert (vault / "Global" / f"{project.id}.md").is_file()
+    assert not wrong_project.exists()
+    assert (vault / "Projects" / "beta" / f"{global_record.id}.md").is_file()
+    assert not wrong_global.exists()
+    assert service.get(project.id) == moved_global
+    assert service.get(global_record.id) == moved_project
+
+
+def test_legacy_duplicate_ids_preserve_higher_and_divergent_bytes(tmp_path):
+    from agent_memory.index import MemoryIndex
+    from agent_memory.store import MarkdownStore
+
+    vault, home = tmp_path / "vault", tmp_path / "state"
+    legacy = vault / "notes"
+    legacy.mkdir(parents=True)
+    memory_id = "018f6f0e-7f52-7dc9-a1f7-2f2872fa9c4a"
+    def note(revision, body):
+        return (f'''---
+id: "{memory_id}"
+type: "fact"
+scope: "global"
+project: null
+importance: 0.5
+confidence: 1.0
+pinned: false
+status: "active"
+tags: []
+revision: {revision}
+content_hash: "fixture-{revision}"
+created_at: "2026-01-01T00:00:00Z"
+updated_at: "2026-01-01T00:00:00Z"
+---
+''').encode() + body
+    legacy_body = b"synthetic legacy body\n"
+    canonical_body = b"synthetic canonical body\n"
+    (legacy / f"{memory_id}.md").write_bytes(note(2, legacy_body))
+    canonical = vault / "Global" / f"{memory_id}.md"
+    canonical.parent.mkdir(parents=True)
+    canonical.write_bytes(note(1, canonical_body))
+    store = MarkdownStore(vault, home)
+
+    assert store.relocate_legacy()["moved"] == 1
+    assert canonical.read_bytes().endswith(legacy_body)
+    conflicts = list((vault / "Conflicts").glob(f"{memory_id}.*.md"))
+    assert len(conflicts) == 1 and conflicts[0].read_bytes().endswith(canonical_body)
