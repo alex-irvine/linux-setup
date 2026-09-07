@@ -115,10 +115,17 @@ class SearchQuery:
     query: str
     project: str | None = None
     status: str | None = "active"
+    scope: str | None = None
+    type: str | None = None
+    tags: Sequence[str] = ()
 
     def __post_init__(self) -> None:
         if self.status is not None:
             validate_domain("status", self.status, MEMORY_STATUSES)
+        if self.scope is not None:
+            validate_domain("scope", self.scope, MEMORY_SCOPES)
+        if self.type is not None:
+            validate_domain("type", self.type, MEMORY_TYPES)
 
 
 @dataclass(frozen=True)
@@ -138,6 +145,12 @@ class MemoryRecord:
     created_at: str
     updated_at: str
 
+    def with_computed_hash(self) -> MemoryRecord:
+        return MemoryRecord(self.id, self.type, self.scope, self.project, self.content,
+                            self.importance, self.confidence, self.pinned, self.tags,
+                            self.status, self.revision, content_hash(self.content),
+                            self.created_at, self.updated_at)
+
     def __post_init__(self) -> None:
         validate_domain("type", self.type, MEMORY_TYPES)
         validate_domain("scope", self.scope, MEMORY_SCOPES)
@@ -152,10 +165,78 @@ class MemoryRecord:
 
 @dataclass(frozen=True)
 class SearchResult:
-    memories: list[MemoryRecord]
+    memories: list[dict]
+    semantic_status: str = "unavailable"
 
     def to_dict(self) -> dict:
-        return {"memories": [memory.to_dict() for memory in self.memories]}
+        return {"memories": self.memories, "semantic_status": self.semantic_status}
+
+
+@dataclass(frozen=True)
+class PinRequest:
+    memory_id: UUID
+    expected_revision: int
+    expected_content_hash: str
+    request_id: str
+    pinned: bool
+
+
+@dataclass(frozen=True)
+class ScopeRequest:
+    memory_id: UUID
+    expected_revision: int
+    expected_content_hash: str
+    request_id: str
+    scope: str
+    project: str | None
+
+    def __post_init__(self) -> None:
+        validate_domain("scope", self.scope, MEMORY_SCOPES)
+        if self.scope == "project" and not self.project:
+            raise MemoryError("invalid_project", "project scope requires a project")
+
+
+@dataclass(frozen=True)
+class FeedbackRequest:
+    memory_id: UUID
+    request_id: str
+    rating: str
+
+    def __post_init__(self) -> None:
+        if self.rating not in {"positive", "negative"}:
+            raise MemoryError("invalid_rating", "rating must be positive or negative")
+
+
+@dataclass(frozen=True)
+class InvalidNote:
+    path: str
+    reason: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class RebuildReport:
+    active_count: int
+    invalid_notes: list[InvalidNote]
+
+    def to_dict(self) -> dict:
+        return {"active_count": self.active_count,
+                "invalid_notes": [note.to_dict() for note in self.invalid_notes]}
+
+
+@dataclass(frozen=True)
+class ReconcileReport:
+    external_edits: list[str]
+    invalid_notes: list[InvalidNote]
+    excluded_paths: list[str]
+    conflict_paths: list[str]
+
+    def to_dict(self) -> dict:
+        return {"external_edits": self.external_edits,
+                "invalid_notes": [note.to_dict() for note in self.invalid_notes],
+                "excluded_paths": self.excluded_paths, "conflict_paths": self.conflict_paths}
 
 
 @dataclass(frozen=True)

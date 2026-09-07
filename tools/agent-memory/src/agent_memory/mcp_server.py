@@ -5,18 +5,20 @@ import sys
 from uuid import UUID
 
 from .cli import result, service_from_env
-from .model import (AddRequest, DeleteRequest, ListQuery, MemoryError, SearchQuery,
-                    UpdateRequest)
+from .model import (AddRequest, DeleteRequest, FeedbackRequest, ListQuery, MemoryError,
+                    PinRequest, ScopeRequest, SearchQuery, UpdateRequest)
 
 
-TOOLS = ("memory_add", "memory_search", "memory_get", "memory_list", "memory_update", "memory_delete", "memory_status")
+TOOLS = ("memory_add", "memory_search", "memory_get", "memory_list", "memory_update", "memory_delete", "memory_status",
+         "memory_feedback", "memory_pin", "memory_scope", "memory_rebuild", "memory_reconcile", "memory_maintain",
+         "memory_delete_all", "memory_purge")
 
 
 def call(service, name: str, arguments: dict):
     if name == "memory_add":
         return service.add(AddRequest(arguments["request_id"], arguments["type"], arguments["scope"], arguments["content"], arguments.get("project"), arguments.get("importance", 0.5), arguments.get("confidence", 1.0), arguments.get("pinned", False), tuple(arguments.get("tags", ()))))
     if name == "memory_search":
-        return service.search(SearchQuery(arguments["query"], arguments.get("project"), arguments.get("status", "active")))
+        return service.search(SearchQuery(arguments["query"], arguments.get("project"), arguments.get("status", "active"), arguments.get("scope"), arguments.get("type"), tuple(arguments.get("tags", ()))))
     if name == "memory_get":
         return service.get(UUID(arguments["id"]))
     if name == "memory_list":
@@ -26,7 +28,25 @@ def call(service, name: str, arguments: dict):
     if name == "memory_delete":
         return service.delete(DeleteRequest(UUID(arguments["id"]), arguments["expected_revision"], arguments["expected_content_hash"], arguments["request_id"]))
     if name == "memory_status":
-        return {"status": "ok"}
+        return service.status()
+    if name == "memory_pin":
+        return service.pin(PinRequest(UUID(arguments["id"]), arguments["expected_revision"], arguments["expected_content_hash"], arguments["request_id"], arguments["pinned"]))
+    if name == "memory_scope":
+        return service.scope(ScopeRequest(UUID(arguments["id"]), arguments["expected_revision"], arguments["expected_content_hash"], arguments["request_id"], arguments["scope"], arguments.get("project")))
+    if name == "memory_feedback":
+        return service.feedback(FeedbackRequest(UUID(arguments["id"]), arguments["request_id"], arguments["rating"]))
+    if name == "memory_rebuild":
+        return service.rebuild()
+    if name == "memory_reconcile":
+        return service.reconcile()
+    if name == "memory_maintain":
+        return service.maintain()
+    if name == "memory_delete_all":
+        return service.delete_all(arguments["request_id"], arguments["token"])
+    if name == "memory_purge":
+        if arguments.get("confirm_history_rewrite") is not True:
+            raise MemoryError("invalid_request", "purge requires confirm_history_rewrite=true")
+        return service.purge(arguments["request_id"], arguments["token"], UUID(arguments["memory_id"]), arguments["content_hash"])
     raise MemoryError("unknown_tool", f"unknown tool {name}")
 
 

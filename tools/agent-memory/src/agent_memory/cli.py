@@ -8,8 +8,8 @@ from pathlib import Path
 from uuid import UUID
 
 from .index import MemoryIndex
-from .model import (AddRequest, DeleteRequest, ListQuery, MemoryError, SearchQuery,
-                    UpdateRequest)
+from .model import (AddRequest, DeleteRequest, FeedbackRequest, ListQuery, MemoryError,
+                    PinRequest, ScopeRequest, SearchQuery, UpdateRequest)
 from .store import MarkdownStore, MemoryService
 
 
@@ -37,7 +37,8 @@ def parser() -> argparse.ArgumentParser:
     add.add_argument("--confidence", type=float, default=1.0)
     add.add_argument("--pinned", action="store_true")
     add.add_argument("--tag", action="append", default=[])
-    for name in ("get", "list", "search", "update", "delete", "status"):
+    for name in ("get", "list", "search", "update", "delete", "status", "pin", "scope",
+                 "feedback", "rebuild", "reconcile", "maintain", "delete-all", "purge"):
         commands.add_parser(name)
     commands.choices["get"].add_argument("--id", required=True)
     commands.choices["list"].add_argument("--project")
@@ -47,6 +48,9 @@ def parser() -> argparse.ArgumentParser:
     commands.choices["search"].add_argument("--query", required=True)
     commands.choices["search"].add_argument("--project")
     commands.choices["search"].add_argument("--status", default="active")
+    commands.choices["search"].add_argument("--scope")
+    commands.choices["search"].add_argument("--type")
+    commands.choices["search"].add_argument("--tag", action="append", default=[])
     update = commands.choices["update"]
     update.add_argument("--id", required=True)
     update.add_argument("--expected-revision", type=int, required=True)
@@ -63,6 +67,37 @@ def parser() -> argparse.ArgumentParser:
     delete.add_argument("--expected-revision", type=int, required=True)
     delete.add_argument("--expected-content-hash", required=True)
     delete.add_argument("--request-id", required=True)
+    pin = commands.choices["pin"]
+    pin.add_argument("--id", required=True)
+    pin.add_argument("--request-id", required=True)
+    pin.add_argument("--expected-revision", type=int, required=True)
+    pin.add_argument("--expected-content-hash", required=True)
+    pin.add_argument("--pinned", action=argparse.BooleanOptionalAction, required=True)
+    scope = commands.choices["scope"]
+    scope.add_argument("--id", required=True)
+    scope.add_argument("--request-id", required=True)
+    scope.add_argument("--expected-revision", type=int, required=True)
+    scope.add_argument("--expected-content-hash", required=True)
+    scope.add_argument("--scope", required=True)
+    scope.add_argument("--project")
+    feedback = commands.choices["feedback"]
+    feedback.add_argument("--id", required=True)
+    feedback.add_argument("--request-id", required=True)
+    feedback.add_argument("--rating", required=True)
+    delete_all = commands.choices["delete-all"]
+    delete_all.add_argument("--request-id", required=True)
+    delete_all.add_argument("--token", required=True)
+    purge = commands.choices["purge"]
+    purge.add_argument("--request-id", required=True)
+    purge.add_argument("--token", required=True)
+    purge.add_argument("--memory-id", required=True)
+    purge.add_argument("--content-hash", required=True)
+    purge.add_argument("--confirm-history-rewrite", action="store_true")
+    admin = commands.add_parser("admin")
+    admin_commands = admin.add_subparsers(dest="admin_command", required=True)
+    authorize = admin_commands.add_parser("authorize")
+    authorize.add_argument("--action", required=True, choices=("delete-all", "purge"))
+    authorize.add_argument("--ttl", type=int, default=60)
     return root
 
 
@@ -82,12 +117,34 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
     if args.command == "list":
         return service.list(ListQuery(args.project, args.scope, args.type, args.status))
     if args.command == "search":
-        return service.search(SearchQuery(args.query, args.project, args.status))
+        return service.search(SearchQuery(args.query, args.project, args.status, args.scope, args.type, tuple(args.tag)))
     if args.command == "update":
         return service.update(UpdateRequest(UUID(args.id), args.expected_revision, args.expected_content_hash, args.request_id, args.content, args.importance, args.confidence, args.pinned, tuple(args.tag) if args.tag is not None else None, args.status))
     if args.command == "delete":
         return service.delete(DeleteRequest(UUID(args.id), args.expected_revision, args.expected_content_hash, args.request_id))
-    return {"status": "ok"}
+    if args.command == "pin":
+        return service.pin(PinRequest(UUID(args.id), args.expected_revision, args.expected_content_hash, args.request_id, args.pinned))
+    if args.command == "scope":
+        return service.scope(ScopeRequest(UUID(args.id), args.expected_revision, args.expected_content_hash, args.request_id, args.scope, args.project))
+    if args.command == "feedback":
+        return service.feedback(FeedbackRequest(UUID(args.id), args.request_id, args.rating))
+    if args.command == "rebuild":
+        return service.rebuild()
+    if args.command == "reconcile":
+        return service.reconcile()
+    if args.command == "maintain":
+        return service.maintain()
+    if args.command == "status":
+        return service.status()
+    if args.command == "delete-all":
+        return service.delete_all(args.request_id, args.token)
+    if args.command == "purge":
+        if not args.confirm_history_rewrite:
+            raise MemoryError("invalid_request", "purge requires --confirm-history-rewrite")
+        return service.purge(args.request_id, args.token, UUID(args.memory_id), args.content_hash)
+    if args.command == "admin":
+        return service.authorize(args.action, args.ttl)
+    raise MemoryError("invalid_request", "unsupported command")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -21,13 +21,22 @@ class MemoryIndex:
                     id TEXT PRIMARY KEY, type TEXT NOT NULL, scope TEXT NOT NULL,
                     project TEXT, content TEXT NOT NULL, importance REAL NOT NULL,
                     confidence REAL NOT NULL, pinned INTEGER NOT NULL, tags TEXT NOT NULL,
-                    status TEXT NOT NULL, revision INTEGER NOT NULL, content_hash TEXT NOT NULL,
-                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                     status TEXT NOT NULL, revision INTEGER NOT NULL, content_hash TEXT NOT NULL,
+                     created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                     externally_modified INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id UNINDEXED, content);
                 CREATE TABLE IF NOT EXISTS idempotency (
                     request_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, result_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS feedback (
+                    id TEXT PRIMARY KEY, positive INTEGER NOT NULL DEFAULT 0, negative INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS excluded_paths (path TEXT PRIMARY KEY, reason TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS admin_operations (
+                    request_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, result_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS embeddings (id TEXT PRIMARY KEY, vector TEXT NOT NULL);
             """)
             self._migrate(connection)
 
@@ -35,6 +44,8 @@ class MemoryIndex:
         memory_columns = {row[1] for row in connection.execute("PRAGMA table_info(memories)")}
         if "status" not in memory_columns:
             connection.execute("ALTER TABLE memories ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+        if "externally_modified" not in memory_columns:
+            connection.execute("ALTER TABLE memories ADD COLUMN externally_modified INTEGER NOT NULL DEFAULT 0")
         idempotency_columns = {row[1] for row in connection.execute("PRAGMA table_info(idempotency)")}
         if "result_id" in idempotency_columns:
             connection.execute("ALTER TABLE idempotency RENAME TO legacy_idempotency")
@@ -51,17 +62,18 @@ class MemoryIndex:
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)
 
-    def upsert(self, record: MemoryRecord) -> None:
+    def upsert(self, record: MemoryRecord, externally_modified: bool = False) -> None:
         values = record.to_dict()
         values["tags"] = ",".join(record.tags)
         values["pinned"] = int(record.pinned)
         with self._connect() as connection:
             connection.execute("""INSERT OR REPLACE INTO memories
                 (id, type, scope, project, content, importance, confidence, pinned, tags,
-                 status, revision, content_hash, created_at, updated_at)
+                  status, revision, content_hash, created_at, updated_at)
                 VALUES (:id, :type, :scope, :project, :content, :importance, :confidence,
                         :pinned, :tags, :status, :revision, :content_hash, :created_at,
-                        :updated_at)""", values)
+                         :updated_at)""", values)
+            connection.execute("UPDATE memories SET externally_modified = ? WHERE id = ?", (int(externally_modified), values["id"]))
             connection.execute("DELETE FROM memories_fts WHERE id = ?", (values["id"],))
             connection.execute("INSERT INTO memories_fts (id, content) VALUES (?, ?)", (values["id"], values["content"]))
 
@@ -69,6 +81,53 @@ class MemoryIndex:
         with self._connect() as connection:
             connection.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
             connection.execute("DELETE FROM memories_fts WHERE id = ?", (memory_id,))
+            connection.execute("DELETE FROM feedback WHERE id = ?", (memory_id,))
+
+    def clear(self) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM memories")
+            connection.execute("DELETE FROM memories_fts")
+            connection.execute("DELETE FROM excluded_paths")
+            connection.execute("DELETE FROM embeddings")
+
+    def remember_embeddings(self, records: list[MemoryRecord], vectors: list[list[float]]) -> None:
+        with self._connect() as connection:
+            connection.executemany("INSERT OR REPLACE INTO embeddings VALUES (?, ?)",
+                                   [(str(record.id), json.dumps(vector, separators=(",", ":")))
+                                    for record, vector in zip(records, vectors)])
+
+    def exclude_path(self, path: Path, reason: str = "invalid memory frontmatter") -> None:
+        with self._connect() as connection:
+            connection.execute("INSERT OR REPLACE INTO excluded_paths VALUES (?, ?)", (str(path), reason))
+
+    def excluded_paths(self) -> list[str]:
+        with self._connect() as connection:
+            return [row[0] for row in connection.execute("SELECT path FROM excluded_paths ORDER BY path")]
+
+    def feedback(self, memory_id: str, rating: str) -> dict:
+        column = "positive" if rating == "positive" else "negative"
+        with self._connect() as connection:
+            connection.execute("INSERT OR IGNORE INTO feedback (id) VALUES (?)", (memory_id,))
+            connection.execute(f"UPDATE feedback SET {column} = {column} + 1 WHERE id = ?", (memory_id,))
+            positive, negative = connection.execute("SELECT positive, negative FROM feedback WHERE id = ?", (memory_id,)).fetchone()
+        return {"id": memory_id, "positive": positive, "negative": negative}
+
+    def feedback_counts(self, memory_id: str) -> tuple[int, int]:
+        with self._connect() as connection:
+            row = connection.execute("SELECT positive, negative FROM feedback WHERE id = ?", (memory_id,)).fetchone()
+        return row or (0, 0)
+
+    def set_feedback(self, memory_id: str, positive: int, negative: int) -> None:
+        with self._connect() as connection:
+            connection.execute("INSERT OR REPLACE INTO feedback VALUES (?, ?, ?)", (memory_id, positive, negative))
+
+    def admin_operation(self, request_id: str) -> tuple[str, str] | None:
+        with self._connect() as connection:
+            return connection.execute("SELECT payload_hash, result_json FROM admin_operations WHERE request_id = ?", (request_id,)).fetchone()
+
+    def remember_admin_operation(self, request_id: str, payload_hash: str, result: dict) -> None:
+        with self._connect() as connection:
+            connection.execute("INSERT INTO admin_operations VALUES (?, ?, ?)", (request_id, payload_hash, json.dumps(result, sort_keys=True)))
 
     def idempotency(self, request_id: str) -> tuple[str, str] | None:
         with self._connect() as connection:
@@ -102,10 +161,23 @@ class MemoryIndex:
         if query.status is not None:
             sql += " AND m.status = ?"
             values.append(query.status)
+        if query.scope is not None:
+            sql += " AND m.scope = ?"
+            values.append(query.scope)
+        if query.type is not None:
+            sql += " AND m.type = ?"
+            values.append(query.type)
+        for tag in query.tags:
+            sql += " AND instr(',' || m.tags || ',', ',' || ? || ',') > 0"
+            values.append(tag)
         sql += " ORDER BY bm25(memories_fts), m.id"
         with self._connect() as connection:
             rows = connection.execute(sql, values).fetchall()
-        return SearchResult([self._record(row) for row in rows])
+        return SearchResult([self._record(row).to_dict() for row in rows])
+
+    def candidates(self, query: SearchQuery) -> list[MemoryRecord]:
+        return [record for record in self.list(ListQuery(query.project, query.scope, query.type, query.status))
+                if set(query.tags).issubset(record.tags)]
 
     @staticmethod
     def _record(row: tuple) -> MemoryRecord:
