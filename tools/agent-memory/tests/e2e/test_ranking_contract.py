@@ -158,3 +158,10 @@ def test_unavailable_ollama_uses_lexical_fallback(tmp_path):
     result = service.search(SearchQuery("lexical"))
     assert result.semantic_status == "unavailable"
     assert [hit["id"] for hit in result.memories] == [str(record.id)]
+
+
+@pytest.mark.parametrize("vectors", [None, 1, [[10 ** 400]], [[True]], [[float("nan")]], [[float("inf")]]])
+def test_vector_validation_never_raises_for_malformed_values(vectors):
+    from agent_memory.store import MemoryService
+
+    assert MemoryService._valid_vectors(vectors, 1) is False

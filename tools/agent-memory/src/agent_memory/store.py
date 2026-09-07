@@ -627,11 +627,11 @@ class MemoryService:
         return SearchResult(hits, semantic_status)
 
     @staticmethod
-    def _valid_vectors(vectors: list[list[float]], count: int, dimension: int | None = None) -> bool:
-        if len(vectors) != count or not vectors or not all(isinstance(vector, list) and vector for vector in vectors):
-            return False
-        expected = dimension if dimension is not None else len(vectors[0])
+    def _valid_vectors(vectors: object, count: int, dimension: int | None = None) -> bool:
         try:
+            if not isinstance(vectors, list) or len(vectors) != count or not vectors or not all(isinstance(vector, list) and vector for vector in vectors):
+                return False
+            expected = dimension if dimension is not None else len(vectors[0])
             return expected > 0 and all(
                 len(vector) == expected
                 and all(isinstance(value, (int, float)) and not isinstance(value, bool)
