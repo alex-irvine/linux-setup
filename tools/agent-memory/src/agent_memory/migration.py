@@ -119,7 +119,7 @@ class MigrationService:
     @staticmethod
     def _row(entry: dict, **values) -> dict:
         return {"source_kind": entry["source_kind"], "source_identity": entry["source_identity"],
-                "source_hash": entry["source_hash"], "cursor": None, "raw_snapshot": entry["raw_snapshot"],
+                "source_hash": entry["source_hash"], "cursor": None, "raw_snapshot": entry["raw_snapshot"], "raw_count": 1 if entry["raw_snapshot"] else 0,
                 "imported_ids": [], "duplicates": [], "conflicts": [], "failures": [],
                 "deferred": None, "waiver": None, **values}
 
@@ -200,38 +200,104 @@ class MigrationService:
                 self._append(batch, self._row(entry, failures=[type(error).__name__]))
         return {"batch": batch, "processed": processed, "imported": imported, "interrupted": False}
 
-    def import_mem0(self, batch: str, pages: list[list[dict]] | None = None,
+    def _mapped_apps(self) -> set[str]:
+        if not self.project_map.is_file():
+            return set()
+        mapping = json.loads(self.project_map.read_text(encoding="utf-8"))
+        if not isinstance(mapping, dict) or not all(isinstance(value, str) for value in mapping.values()):
+            raise MemoryError("invalid_request", "project map must map source paths to app ids")
+        return set(mapping.values())
+
+    def _hosted_pages(self, pages: list[dict] | None) -> list[dict]:
+        if not pages:
+            return []
+        apps = sorted(self._mapped_apps())
+        normalized = []
+        for number, page in enumerate(pages):
+            if isinstance(page, list):
+                if number >= len(apps):
+                    raise MemoryError("invalid_request", "hosted page has no mapped app id")
+                page = {"app_id": apps[number], "cursor": str(number), "records": page}
+            if not isinstance(page, dict) or not isinstance(page.get("app_id"), str) or not isinstance(page.get("records"), list):
+                raise MemoryError("invalid_request", "hosted page must include app_id and records")
+            if page["app_id"] not in apps:
+                raise MemoryError("invalid_request", "hosted app id is not in the project map")
+            normalized.append({"app_id": page["app_id"], "cursor": str(page.get("cursor", number)), "records": page["records"]})
+        return normalized
+
+    @staticmethod
+    def _scope_identity(app_id: str) -> str:
+        return f"alex/{app_id}"
+
+    def _hosted_scope_latest(self, rows: list[dict]) -> dict[str, dict]:
+        scopes = {}
+        for row in rows:
+            if row["source_kind"] == "hosted" and row.get("hosted_scope"):
+                scopes[row["source_identity"]] = row
+            elif row["source_kind"] == "hosted" and row["source_identity"].count("/") == 1:
+                scopes[row["source_identity"]] = row
+        return scopes
+
+    def import_mem0(self, batch: str, pages: list[dict] | None = None,
                     quota_failure_after_page: int | None = None) -> dict:
         self._manifest(batch)
         rows = self._rows(batch)
-        if any(row["source_kind"] == "hosted" and row.get("deferred") for row in rows):
-            return {"batch": batch, "imported": 0, "deferred": QUOTA_DEFERRAL}
-        pages = pages or []
+        normalized = self._hosted_pages(pages)
+        if not normalized:
+            deferred_scopes = [row for row in self._hosted_scope_latest(rows).values() if row.get("deferred")]
+            if deferred_scopes:
+                return {"batch": batch, "imported": 0, "deferred": QUOTA_DEFERRAL, "resume_cursor": deferred_scopes[0]["cursor"]}
+            apps = sorted(self._mapped_apps())
+            if not apps:
+                raise MemoryError("invalid_request", "project map has no hosted app ids")
+            entry = {"source_kind": "hosted", "source_identity": self._scope_identity(apps[0]), "source_hash": None, "raw_snapshot": None}
+            self._append(batch, self._row(entry, hosted_scope=True, deferred=QUOTA_DEFERRAL))
+            return {"batch": batch, "imported": 0, "deferred": QUOTA_DEFERRAL, "resume_cursor": None}
+        seen = {(row["source_identity"], row["source_hash"]) for row in rows
+                if row["source_kind"] == "hosted" and row.get("source_hash") and row.get("imported_ids")}
+        scopes = self._hosted_scope_latest(rows)
         imported = 0
-        for page_number, page in enumerate(pages):
+        resume_cursor = None
+        for page_number, page in enumerate(normalized):
             raw = json.dumps(page, sort_keys=True, separators=(",", ":")).encode("utf-8")
-            snapshot = f"hosted/page-{page_number:04d}.json"
+            snapshot_key = f"{page['app_id']}:{page['cursor']}"
+            snapshot = f"hosted/{self._hash(snapshot_key.encode())}.json"
             target = self._batch_dir(batch) / snapshot
             target.parent.mkdir(exist_ok=True)
+            if target.exists() and target.read_bytes() != raw:
+                raise MemoryError("snapshot_exists", "hosted snapshot differs from the immutable page")
             if not target.exists():
                 target.write_bytes(raw)
-            for item in page:
-                identity = f"alex/app-one/{item.get('id', imported)}"
+            for item in page["records"]:
+                if not isinstance(item, dict) or "id" not in item:
+                    raise MemoryError("invalid_request", "hosted record must have a source-local id")
+                identity = f"{self._scope_identity(page['app_id'])}/{item['id']}"
                 digest = self._hash(json.dumps(item, sort_keys=True, separators=(",", ":")).encode("utf-8"))
-                entry = {"source_kind": "hosted", "source_identity": identity, "source_hash": digest,
-                         "raw_snapshot": snapshot}
+                if (identity, digest) in seen:
+                    continue
+                entry = {"source_kind": "hosted", "source_identity": identity, "source_hash": digest, "raw_snapshot": snapshot}
                 record = self.service.add(AddRequest(f"migration:{batch}:hosted:{digest}", "fact", "global",
                                                        str(item.get("memory", "")), tags=("migration", batch, "hosted")))
-                self._append(batch, self._row(entry, cursor=page_number, imported_ids=[str(record.id)]))
+                self._append(batch, self._row(entry, cursor=page["cursor"], imported_ids=[str(record.id)]))
+                seen.add((identity, digest))
                 imported += 1
+            scope = self._scope_identity(page["app_id"])
+            if scopes.get(scope, {}).get("deferred"):
+                entry = {"source_kind": "hosted", "source_identity": scope, "source_hash": self._hash(raw), "raw_snapshot": snapshot}
+                row = self._row(entry, cursor=page["cursor"], hosted_scope=True)
+                self._append(batch, row)
+                scopes[scope] = row
+            resume_cursor = page["cursor"]
             if quota_failure_after_page is not None and page_number + 1 >= quota_failure_after_page:
-                break
-        if not pages or quota_failure_after_page is not None:
-            entry = {"source_kind": "hosted", "source_identity": "alex/app-two", "source_hash": None,
-                     "raw_snapshot": None}
-            self._append(batch, self._row(entry, deferred=QUOTA_DEFERRAL))
-            return {"batch": batch, "imported": imported, "deferred": QUOTA_DEFERRAL}
-        return {"batch": batch, "imported": imported, "deferred": None}
+                next_page = normalized[page_number + 1] if page_number + 1 < len(normalized) else page
+                scope = self._scope_identity(next_page["app_id"])
+                existing = scopes.get(scope)
+                if not existing or not existing.get("deferred"):
+                    entry = {"source_kind": "hosted", "source_identity": scope, "source_hash": None, "raw_snapshot": snapshot}
+                    row = self._row(entry, cursor=page["cursor"], hosted_scope=True, deferred=QUOTA_DEFERRAL)
+                    self._append(batch, row)
+                return {"batch": batch, "imported": imported, "deferred": QUOTA_DEFERRAL, "resume_cursor": resume_cursor}
+        return {"batch": batch, "imported": imported, "deferred": None, "resume_cursor": resume_cursor}
 
     def _summary(self, batch: str) -> dict:
         manifest = self._manifest(batch)
@@ -239,7 +305,7 @@ class MigrationService:
         latest = self._latest_local(batch)
         unaccounted = [entry for entry in manifest["sources"] if entry["source_identity"] not in latest or not any(
             latest[entry["source_identity"]].get(key) for key in ("imported_ids", "duplicates", "deferred", "waiver"))]
-        deferred = [row["source_identity"] for row in rows if row["source_kind"] == "hosted" and row.get("deferred")]
+        deferred = [identity for identity, row in self._hosted_scope_latest(rows).items() if row.get("deferred")]
         conflicts = sum(len(row.get("conflicts", [])) for row in latest.values())
         return {"batch": batch, "source_files": len(manifest["sources"]), "ledger_rows": len(rows),
                 "unaccounted_sources": len(unaccounted), "deferred_hosted_scopes": deferred,
@@ -254,14 +320,16 @@ class MigrationService:
         destination.parent.mkdir(parents=True, exist_ok=True)
         lines = ["# Migration Reconciliation Report", "", f"Batch: `{batch}`", "",
                  f"Manifest SHA-256: `{summary['manifest_hash']}`", "",
-                 "| Source | Hash | Imported | Duplicates | Conflicts | Deferred | Failures | Waiver |",
-                 "| --- | --- | ---: | --- | --- | --- | --- | --- |"]
+                 "| Source kind | Source identity | Source hash | Raw snapshot | Raw count | Cursor | Imported IDs | Duplicate IDs | Conflict links | Failures | Deferrals | Waiver reason | Waiver decision |",
+                 "| --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- |"]
         for row in rows:
-            lines.append("| {source_identity} | {source_hash} | {imported} | {duplicates} | {conflicts} | {deferred} | {failures} | {waiver} |".format(
-                source_identity=Path(row["source_identity"]).name, source_hash=row.get("source_hash") or "-",
-                imported=len(row["imported_ids"]), duplicates=",".join(row["duplicates"]) or "-",
+            lines.append("| {source_kind} | {source_identity} | {source_hash} | {raw_snapshot} | {raw_count} | {cursor} | {imported} | {duplicates} | {conflicts} | {failures} | {deferred} | {waiver_reason} | {waiver_decision} |".format(
+                source_kind=row["source_kind"], source_identity=row["source_identity"], source_hash=row.get("source_hash") or "-",
+                raw_snapshot=row.get("raw_snapshot") or "-", raw_count=row.get("raw_count", 1 if row.get("raw_snapshot") else 0), cursor=row.get("cursor") or "-",
+                imported=",".join(row["imported_ids"]) or "-", duplicates=",".join(row["duplicates"]) or "-",
                 conflicts=",".join(row["conflicts"]) or "-", deferred=row["deferred"]["reason"] if row["deferred"] else "-",
-                failures=",".join(row["failures"]) or "-", waiver=row["waiver"]["reason"] if row["waiver"] else "-"))
+                failures=",".join(row["failures"]) or "-", waiver_reason=row["waiver"]["reason"] if row["waiver"] else "-",
+                waiver_decision=row["waiver"]["decision"] if row["waiver"] else "-"))
         lines.extend(["", f"Source files: {summary['source_files']}", f"Unaccounted sources: {summary['unaccounted_sources']}",
                       f"Contradictions requiring review: {summary['contradictions']}"])
         if summary["deferred_hosted_scopes"]:
