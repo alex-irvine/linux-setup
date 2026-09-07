@@ -11,6 +11,7 @@ from uuid import UUID
 
 from .index import MemoryIndex
 from .capture import Outbox, Worker
+from .migration import MigrationService
 from .model import (AddRequest, DeleteRequest, FeedbackRequest, ListQuery, MemoryError,
                     PinRequest, ScopeRequest, SearchQuery, UpdateRequest)
 from .store import MarkdownStore, MemoryService
@@ -115,6 +116,13 @@ def parser() -> argparse.ArgumentParser:
     sync_commands.add_parser("resume")
     commands.choices["maintain"].add_argument("--security-scan", action="store_true")
     commands.choices["maintain"].add_argument("--fail-on-finding", action="store_true")
+    migrate = commands.add_parser("migrate")
+    migrate_commands = migrate.add_subparsers(dest="migrate_command", required=True)
+    for name in ("snapshot", "import-local", "import-mem0", "report", "verify"):
+        command = migrate_commands.add_parser(name)
+        command.add_argument("--batch", required=True)
+    migrate_commands.choices["import-local"].add_argument("--stop-after", type=int)
+    migrate_commands.choices["import-mem0"].add_argument("--hosted-export")
     return root
 
 
@@ -182,6 +190,21 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
             finally:
                 os.close(directory)
         return {"paused": False}
+    if args.command == "migrate":
+        migration = MigrationService(service, service.store.home)
+        if args.migrate_command == "snapshot":
+            return migration.snapshot(args.batch)
+        if args.migrate_command == "import-local":
+            return migration.import_local(args.batch, args.stop_after)
+        if args.migrate_command == "import-mem0":
+            pages = None
+            if args.hosted_export:
+                loaded = json.loads(Path(args.hosted_export).read_text(encoding="utf-8"))
+                pages = loaded if isinstance(loaded, list) else [loaded]
+            return migration.import_mem0(args.batch, pages)
+        if args.migrate_command == "report":
+            return migration.report(args.batch)
+        return migration.verify(args.batch)
     raise MemoryError("invalid_request", "unsupported command")
 
 

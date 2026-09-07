@@ -312,7 +312,11 @@ class MarkdownStore:
         if action not in {"delete-all", "purge"} or ttl < 1 or ttl > 60:
             raise MemoryError("invalid_request", "authorization action or ttl is invalid")
         with self._locked():
-            token, entries = secrets.token_urlsafe(24), self._authorizations()
+            # Keep positional CLI values unambiguous when argparse sees the token.
+            token = secrets.token_urlsafe(24)
+            while token.startswith("-"):
+                token = secrets.token_urlsafe(24)
+            entries = self._authorizations()
             expiry = time.time() + ttl
             entries[token] = {"action": action, "expires_at": expiry}
             self.authorizations_path.write_text(json.dumps(entries, sort_keys=True), encoding="utf-8")
