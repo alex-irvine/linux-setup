@@ -36,7 +36,7 @@ class OllamaClient:
                            for vector in vectors for value in vector)):
                 return DegradedStatus("invalid embedding response")
             return EmbeddingBatch([[float(value) for value in vector] for vector in vectors])
-        except (OSError, URLError, TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
+        except (OSError, URLError, OverflowError, TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
             return DegradedStatus(str(error))
 
     def review_capture(self, candidate: dict) -> dict | DegradedStatus:
