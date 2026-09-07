@@ -175,8 +175,8 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
         return service.maintain(args.security_scan, args.fail_on_finding)
     if args.command == "status":
         value = service.status()
-        if args.require_healthy and (value["invalid_notes"] or value["sync_paused"] or value["sync_state"]["scheduling_error"]):
-            raise MemoryError("unhealthy", "memory status has invalid notes, a paused sync, or a scheduling failure")
+        if args.require_healthy and (value["invalid_notes"] or value["outbox"]["ready"] or value["outbox"]["running"] or value["sync_paused"] or value["sync_state"]["scheduling_error"]):
+            raise MemoryError("unhealthy", "memory status has invalid notes, active outbox work, a paused sync, or a scheduling failure")
         return value
     if args.command == "delete-all":
         return service.delete_all(args.request_id, args.token)

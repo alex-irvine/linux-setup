@@ -8,6 +8,8 @@ from uuid import UUID
 
 import pytest
 
+from agent_memory.capture import Outbox
+
 
 @pytest.fixture
 def run_cli():
@@ -240,3 +242,16 @@ Legacy Task 1 note.
             "SELECT result_json FROM idempotency WHERE request_id = 'legacy-request'").fetchone()[0])
     assert replay["id"] == legacy_id
     assert replay["status"] == "active"
+
+
+def test_require_healthy_rejects_ready_and_running_outbox_work(tmp_path, run_cli):
+    env = {"AGENT_MEMORY_HOME": str(tmp_path / "state"),
+           "AGENT_MEMORY_VAULT": str(tmp_path / "vault")}
+    outbox = Outbox(tmp_path / "state")
+    outbox.enqueue("capture", {"id": "ready"})
+    ready = run_cli(env, "status", "--require-healthy", check=False)
+    assert ready["error"]["code"] == "unhealthy"
+    claimed = outbox.claim()
+    assert claimed is not None
+    running = run_cli(env, "status", "--require-healthy", check=False)
+    assert running["error"]["code"] == "unhealthy"
