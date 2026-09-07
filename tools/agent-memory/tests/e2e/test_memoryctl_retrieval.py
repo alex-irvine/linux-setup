@@ -141,10 +141,12 @@ def test_mcp_exposes_lifecycle_tools_but_not_authorize(memory_app, fake_ollama, 
         assert mcp.process.stdin and mcp.process.stdout
         mcp.process.stdin.write(json.dumps({"jsonrpc": "2.0", "id": mcp.request_id, "method": "tools/list"}) + "\n")
         mcp.process.stdin.flush()
-        names = {tool["name"] for tool in json.loads(mcp.process.stdout.readline())["result"]["tools"]}
+        tools = json.loads(mcp.process.stdout.readline())["result"]["tools"]
+        names = {tool["name"] for tool in tools}
     assert {"memory_feedback", "memory_pin", "memory_scope", "memory_rebuild", "memory_reconcile",
             "memory_maintain", "memory_delete_all", "memory_purge"} <= names
     assert "memory_admin_authorize" not in names
+    assert all(tool["inputSchema"].get("properties") is not None for tool in tools)
 
 
 def test_mcp_client_identity_is_persisted_and_rebuilt(memory_app, fake_ollama, tmp_path):

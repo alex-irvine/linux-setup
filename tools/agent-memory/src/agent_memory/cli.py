@@ -42,6 +42,8 @@ def parser() -> argparse.ArgumentParser:
     add.add_argument("--pinned", action="store_true")
     add.add_argument("--tag", action="append", default=[])
     add.add_argument("--source-client", default="unknown")
+    add.add_argument("--source-session", default="unknown")
+    add.add_argument("--supersedes", action="append", default=[])
     add.add_argument("--json-input")
     for name in ("get", "list", "search", "update", "delete", "status", "pin", "scope",
                   "feedback", "rebuild", "reconcile", "maintain", "delete-all", "purge", "enqueue", "worker"):
@@ -150,7 +152,7 @@ def result(value):
 
 def dispatch(service: MemoryService, args: argparse.Namespace):
     if args.command == "add":
-        return service.add(AddRequest(args.request_id, args.type, args.scope, args.content, args.project, args.importance, args.confidence, args.pinned, tuple(args.tag), args.source_client))
+        return service.add(AddRequest(args.request_id, args.type, args.scope, args.content, args.project, args.importance, args.confidence, args.pinned, tuple(args.tag), args.source_client, args.source_session, tuple(args.supersedes)))
     if args.command == "get":
         return service.get(UUID(args.id))
     if args.command == "list":

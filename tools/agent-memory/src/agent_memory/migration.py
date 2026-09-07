@@ -150,7 +150,7 @@ class MigrationService:
         if action == "defer":
             if note_id is None or latest.get("imported_ids") != [note_id]:
                 raise MemoryError("invalid_request", "note id does not match the imported source")
-            path = self.service.store.notes / f"{UUID(note_id)}.md"
+            path = self.service.store._path(UUID(note_id))
             if not path.exists():
                 raise MemoryError("not_found", "generated note does not exist")
             path.unlink()

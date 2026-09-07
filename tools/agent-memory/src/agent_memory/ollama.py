@@ -38,12 +38,13 @@ class OllamaClient:
 
     def review_capture(self, candidate: dict) -> dict | DegradedStatus:
         request = Request(f"{self.url}/api/generate", data=json.dumps({"stream": False,
-            "prompt": "Return strict JSON only: {\\\"accept\\\": boolean, \\\"reason\\\": string}. Review this memory candidate: " + json.dumps(candidate, sort_keys=True)}).encode(),
+            "prompt": "Return strict JSON only with exactly type, scope, project, content, importance, confidence, tags, durability, supersedes. Curate completed-work evidence; never copy transcripts or private data. " + json.dumps(candidate, sort_keys=True)}).encode(),
             headers={"Content-Type": "application/json"}, method="POST")
         try:
             with urlopen(request, timeout=self.timeout) as response:
                 review = json.loads(json.loads(response.read())["response"])
-            if set(review) != {"accept", "reason"} or not isinstance(review["accept"], bool) or not isinstance(review["reason"], str):
+            required = {"type", "scope", "project", "content", "importance", "confidence", "tags", "durability", "supersedes"}
+            if set(review) != required:
                 return DegradedStatus("invalid capture review")
             return review
         except (OSError, URLError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:

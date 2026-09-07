@@ -63,6 +63,8 @@ class AddRequest:
     pinned: bool = False
     tags: Sequence[str] = ()
     source_client: str = "unknown"
+    source_session: str = "unknown"
+    supersedes: Sequence[str] = ()
 
     def __post_init__(self) -> None:
         validate_domain("type", self.type, MEMORY_TYPES)
@@ -146,12 +148,14 @@ class MemoryRecord:
     created_at: str
     updated_at: str
     source_client: str = "unknown"
+    source_session: str = "unknown"
+    supersedes: tuple[str, ...] = ()
 
     def with_computed_hash(self) -> MemoryRecord:
         return MemoryRecord(self.id, self.type, self.scope, self.project, self.content,
                              self.importance, self.confidence, self.pinned, self.tags,
                              self.status, self.revision, content_hash(self.content),
-                             self.created_at, self.updated_at, self.source_client)
+                              self.created_at, self.updated_at, self.source_client, self.source_session, self.supersedes)
 
     def __post_init__(self) -> None:
         validate_domain("type", self.type, MEMORY_TYPES)
@@ -162,6 +166,7 @@ class MemoryRecord:
         value = asdict(self)
         value["id"] = str(self.id)
         value["tags"] = list(self.tags)
+        value["supersedes"] = list(self.supersedes)
         return value
 
 
@@ -256,7 +261,7 @@ class DeleteResult:
 
 
 def record_from_dict(values: dict) -> MemoryRecord:
-    return MemoryRecord(UUID(values["id"]), values["type"], values["scope"], values.get("project"), values["content"], values["importance"], values["confidence"], values["pinned"], tuple(values["tags"]), values["status"], values["revision"], values["content_hash"], values["created_at"], values["updated_at"], values.get("source_client", "unknown"))
+    return MemoryRecord(UUID(values["id"]), values["type"], values["scope"], values.get("project"), values["content"], values["importance"], values["confidence"], values["pinned"], tuple(values["tags"]), values["status"], values["revision"], values["content_hash"], values["created_at"], values["updated_at"], values.get("source_client", "unknown"), values.get("source_session", "unknown"), tuple(values.get("supersedes", ())))
 
 
 def delete_result_from_dict(values: dict) -> DeleteResult:

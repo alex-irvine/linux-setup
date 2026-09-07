@@ -46,7 +46,7 @@ def test_sync_commits_only_memory_and_preserves_user_index(git_fixture):
     created = memory(repo, env, "add", "--request-id", "a", "--type", "fact", "--scope", "global", "--content", "a")
     report = memory(repo, env, "worker", "--drain")
     assert report["sync"]["commit_created"] is True
-    assert git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").stdout.splitlines() == ["agents/.agents/memory/notes/" + created["id"] + ".md"]
+    assert git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").stdout.splitlines() == ["agents/.agents/memory/Global/" + created["id"] + ".md"]
     assert git(repo, "write-tree").stdout == before_index
     assert (repo / "pi/extension.ts").read_text(encoding="utf-8") == "unstaged-user-change"
     assert git(remote, "rev-parse", "main").stdout == git(repo, "rev-parse", "HEAD").stdout
@@ -55,7 +55,7 @@ def test_sync_commits_only_memory_and_preserves_user_index(git_fixture):
 def test_sync_discovers_direct_edits_and_retains_retryable_failures(git_fixture):
     repo, remote, env = git_fixture
     created = memory(repo, env, "add", "--request-id", "direct", "--type", "fact", "--scope", "global", "--content", "original")
-    note = repo / "agents/.agents/memory/notes" / f"{created['id']}.md"
+    note = repo / "agents/.agents/memory/Global" / f"{created['id']}.md"
     note.write_text(note.read_text(encoding="utf-8").replace("original", "edited"), encoding="utf-8")
     report = memory(repo, env, "worker", "--once")
     assert report["sync"]["commit_created"] is True

@@ -8,7 +8,7 @@ from pathlib import Path
 from .model import ListQuery, MemoryRecord, SearchQuery, SearchResult
 
 
-RECORD_COLUMNS = "id, type, scope, project, content, importance, confidence, pinned, tags, status, revision, content_hash, created_at, updated_at, source_client"
+RECORD_COLUMNS = "id, type, scope, project, content, importance, confidence, pinned, tags, status, revision, content_hash, created_at, updated_at, source_client, source_session, supersedes"
 
 
 class MemoryIndex:
@@ -23,7 +23,8 @@ class MemoryIndex:
                     confidence REAL NOT NULL, pinned INTEGER NOT NULL, tags TEXT NOT NULL,
                      status TEXT NOT NULL, revision INTEGER NOT NULL, content_hash TEXT NOT NULL,
                       created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                      source_client TEXT NOT NULL DEFAULT 'unknown',
+                       source_client TEXT NOT NULL DEFAULT 'unknown', source_session TEXT NOT NULL DEFAULT 'unknown',
+                       supersedes TEXT NOT NULL DEFAULT '[]',
                      externally_modified INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id UNINDEXED, content);
@@ -49,6 +50,10 @@ class MemoryIndex:
             connection.execute("ALTER TABLE memories ADD COLUMN externally_modified INTEGER NOT NULL DEFAULT 0")
         if "source_client" not in memory_columns:
             connection.execute("ALTER TABLE memories ADD COLUMN source_client TEXT NOT NULL DEFAULT 'unknown'")
+        if "source_session" not in memory_columns:
+            connection.execute("ALTER TABLE memories ADD COLUMN source_session TEXT NOT NULL DEFAULT 'unknown'")
+        if "supersedes" not in memory_columns:
+            connection.execute("ALTER TABLE memories ADD COLUMN supersedes TEXT NOT NULL DEFAULT '[]'")
         idempotency_columns = {row[1] for row in connection.execute("PRAGMA table_info(idempotency)")}
         if "result_id" in idempotency_columns:
             connection.execute("ALTER TABLE idempotency RENAME TO legacy_idempotency")
@@ -69,13 +74,14 @@ class MemoryIndex:
         values = record.to_dict()
         values["tags"] = ",".join(record.tags)
         values["pinned"] = int(record.pinned)
+        values["supersedes"] = json.dumps(list(record.supersedes), separators=(",", ":"))
         with self._connect() as connection:
             connection.execute("""INSERT OR REPLACE INTO memories
                 (id, type, scope, project, content, importance, confidence, pinned, tags,
-                  status, revision, content_hash, created_at, updated_at, source_client)
+                   status, revision, content_hash, created_at, updated_at, source_client, source_session, supersedes)
                 VALUES (:id, :type, :scope, :project, :content, :importance, :confidence,
                          :pinned, :tags, :status, :revision, :content_hash, :created_at,
-                          :updated_at, :source_client)""", values)
+                           :updated_at, :source_client, :source_session, :supersedes)""", values)
             connection.execute("UPDATE memories SET externally_modified = ? WHERE id = ?", (int(externally_modified), values["id"]))
             connection.execute("DELETE FROM memories_fts WHERE id = ?", (values["id"],))
             connection.execute("INSERT INTO memories_fts (id, content) VALUES (?, ?)", (values["id"], values["content"]))
@@ -85,6 +91,7 @@ class MemoryIndex:
             connection.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
             connection.execute("DELETE FROM memories_fts WHERE id = ?", (memory_id,))
             connection.execute("DELETE FROM feedback WHERE id = ?", (memory_id,))
+            connection.execute("DELETE FROM embeddings WHERE id = ?", (memory_id,))
 
     def clear(self) -> None:
         with self._connect() as connection:
@@ -97,7 +104,20 @@ class MemoryIndex:
         with self._connect() as connection:
             connection.executemany("INSERT OR REPLACE INTO embeddings VALUES (?, ?)",
                                    [(str(record.id), json.dumps(vector, separators=(",", ":")))
-                                    for record, vector in zip(records, vectors)])
+                                     for record, vector in zip(records, vectors)])
+
+    def embeddings(self, records: list[MemoryRecord]) -> dict[str, list[float]]:
+        if not records:
+            return {}
+        with self._connect() as connection:
+            rows = connection.execute("SELECT id, vector FROM embeddings WHERE id IN (%s)" % ",".join("?" * len(records)), [str(record.id) for record in records]).fetchall()
+        values = {}
+        for memory_id, vector in rows:
+            try:
+                values[memory_id] = [float(value) for value in json.loads(vector)]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+        return values
 
     def exclude_path(self, path: Path, reason: str = "invalid memory frontmatter") -> None:
         with self._connect() as connection:
@@ -185,4 +205,4 @@ class MemoryIndex:
     @staticmethod
     def _record(row: tuple) -> MemoryRecord:
         from uuid import UUID
-        return MemoryRecord(UUID(row[0]), row[1], row[2], row[3], row[4], row[5], row[6], bool(row[7]), tuple(filter(None, row[8].split(","))), row[9], row[10], row[11], row[12], row[13], row[14])
+        return MemoryRecord(UUID(row[0]), row[1], row[2], row[3], row[4], row[5], row[6], bool(row[7]), tuple(filter(None, row[8].split(","))), row[9], row[10], row[11], row[12], row[13], row[14], row[15], tuple(json.loads(row[16])))

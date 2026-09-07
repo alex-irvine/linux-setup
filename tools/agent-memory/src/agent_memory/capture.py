@@ -6,18 +6,48 @@ import json
 import os
 import tempfile
 import time
+import re
 from contextlib import contextmanager
 from pathlib import Path
 
 from .git_sync import GitSync, VAULT_RELPATH
-from .model import AddRequest, ListQuery, UpdateRequest, normalize_content, utc_now
+from .model import AddRequest, ListQuery, MEMORY_SCOPES, MEMORY_TYPES, UpdateRequest, normalize_content, utc_now
 from .ollama import DegradedStatus
 
 
 def unsafe_reason(content: str) -> str | None:
     lowered = content.lower()
-    checks = (("secret", ("api key", "api_key", "sk-", "password=", "token=")), ("prompt_injection", ("ignore previous instructions", "system prompt", "jailbreak")), ("raw_transcript", ("user:", "assistant:")), ("private_response", ("http/1.", "set-cookie:", "private response")), ("transient", ("in progress", "task status", "todo", "temporary")))
+    if len(content) > 4000:
+        return "bulk_output"
+    if re.search(r"(?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*(?:bearer\s+)?\S+", content, re.I) or "-----begin " in lowered and "private key-----" in lowered or re.search(r"\b(?:home|path|aws_[a-z_]+)\s*=", content, re.I):
+        return "secret"
+    checks = (("prompt_injection", ("ignore previous instructions", "ignore all prior", "system prompt", "jailbreak", "developer message")), ("raw_transcript", ("user:", "assistant:", "role: assistant", "role: user")), ("private_response", ("http/1.", "set-cookie:", "private response", "content-type: application/json")), ("transient", ("in progress", "task status", "todo", "temporary", "working on")))
     return next((reason for reason, markers in checks if any(marker in lowered for marker in markers)), None)
+
+
+def reviewed_candidate(event: dict, review: dict) -> tuple[dict | None, str | None]:
+    """Validate untrusted local-model output before it crosses into canonical data."""
+    required = {"type", "scope", "project", "content", "importance", "confidence", "tags", "durability", "supersedes"}
+    if not isinstance(review, dict) or set(review) != required:
+        return None, "review_malformed"
+    if review["type"] not in MEMORY_TYPES or review["scope"] not in MEMORY_SCOPES:
+        return None, "review_invalid_domain"
+    if not isinstance(review["content"], str) or not normalize_content(review["content"]):
+        return None, "review_empty"
+    if not isinstance(review["importance"], (int, float)) or not 0 <= review["importance"] <= 1 or not isinstance(review["confidence"], (int, float)) or not 0 <= review["confidence"] <= 1:
+        return None, "review_invalid_scores"
+    if not isinstance(review["tags"], list) or not all(isinstance(tag, str) and tag for tag in review["tags"]) or not isinstance(review["supersedes"], list) or not all(isinstance(item, str) for item in review["supersedes"]):
+        return None, "review_invalid_metadata"
+    if review["scope"] == "project" and not isinstance(review["project"], str):
+        return None, "review_invalid_project"
+    if review["scope"] == "global" and review["project"] is not None:
+        return None, "review_invalid_project"
+    if review["durability"] is not True:
+        return None, "not_durable"
+    reason = unsafe_reason(review["content"])
+    if reason:
+        return None, reason
+    return review, None
 
 
 def atomic_json(path: Path, value: dict) -> None:
@@ -131,20 +161,32 @@ class Worker:
         if self.service.store.sync_dirty() and not self.outbox.has_sync(): self.queue_sync()
 
     def _capture(self, payload: dict, report: dict) -> None:
-        candidate_id, content = payload.get("id", "capture"), payload.get("content", "")
-        reason = unsafe_reason(content)
-        if reason: report["rejected_by_reason"].append(reason); return
+        if payload.get("event") != "completed_work" or payload.get("version") != 1 or payload.get("client") not in {"claude", "opencode", "hermes", "pi"} or not isinstance(payload.get("evidence"), dict):
+            report["rejected_by_reason"].append("invalid_capture_event"); return
+        candidate_id = payload.get("id", "capture")
+        evidence = payload["evidence"]
+        if unsafe_reason(" ".join(str(value) for value in evidence.values())):
+            report["rejected_by_reason"].append("unsafe_evidence"); return
         review = self.service.ollama.review_capture(payload)
-        if not isinstance(review, DegradedStatus) and not review["accept"]: report["rejected_by_reason"].append("review_rejected"); return
+        if isinstance(review, DegradedStatus):
+            raise RuntimeError("capture reviewer unavailable")
+        candidate, reason = reviewed_candidate(payload, review)
+        if reason:
+            report["rejected_by_reason"].append(reason); return
+        assert candidate is not None
+        content = candidate["content"]
+        explicit = candidate["type"] in {"preference", "correction"} and bool(payload.get("explicit_user"))
+        if candidate["confidence"] < 0.8 and not explicit:
+            report["rejected_by_reason"].append("low_confidence"); return
         records = self.service.list(ListQuery(status="active"))
         if any(normalize_content(record.content) == normalize_content(content) for record in records): report["rejected_by_reason"].append("duplicate"); return
         mapping = self.home / "capture-ids.json"
         with self.outbox.locked():
             capture_ids = json.loads(mapping.read_text(encoding="utf-8")) if mapping.exists() else {}
-            if payload.get("supersedes"):
-                prior = next((record for record in records if str(record.id) == capture_ids.get(payload["supersedes"])), None)
-                if prior: self.service.update(UpdateRequest(prior.id, prior.revision, prior.content_hash, f"capture-supersede-{candidate_id}", status="superseded"))
-            created = self.service.add(AddRequest(f"capture-{candidate_id}", payload.get("type", "fact"), payload.get("scope", "global"), content, payload.get("project"), payload.get("importance", 0.5), payload.get("confidence", 1.0), False, tuple(payload.get("tags", ()))))
+            for superseded in candidate["supersedes"]:
+                prior = next((record for record in records if str(record.id) == superseded), None)
+                if prior: self.service.update(UpdateRequest(prior.id, prior.revision, prior.content_hash, f"capture-supersede-{candidate_id}-{prior.id}", status="superseded"))
+            created = self.service.add(AddRequest(f"capture-{candidate_id}", candidate["type"], candidate["scope"], content, candidate["project"], candidate["importance"], candidate["confidence"], False, tuple(candidate["tags"]), payload["client"], payload.get("source_session", "unknown"), tuple(candidate["supersedes"])))
             capture_ids[candidate_id] = str(created.id)
             atomic_json(mapping, capture_ids)
         report["accepted"].append(candidate_id)

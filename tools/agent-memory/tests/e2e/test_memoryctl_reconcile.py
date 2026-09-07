@@ -36,7 +36,7 @@ def add(memory_app, request_id, content, scope="project", project="dotfiles"):
 def test_reconcile_invalid_notes_and_rebuild_deleted_catalog(memory_app, tmp_path):
     external = add(memory_app, "external", "Original body")
     invalid = add(memory_app, "invalid", "Will be corrupted")
-    notes = tmp_path / "vault" / "notes"
+    notes = tmp_path / "vault" / "Projects" / "dotfiles"
     external_path = notes / f"{external['id']}.md"
     external_path.write_text(external_path.read_text(encoding="utf-8").replace("Original body", "Edited directly"), encoding="utf-8")
     invalid_path = notes / f"{invalid['id']}.md"
@@ -74,7 +74,7 @@ def test_concurrent_stale_writers_preserve_one_winner_and_conflicts(memory_app, 
         outcomes = list(writers.map(update, range(4)))
     assert sum(outcome["ok"] for outcome in outcomes) == 1
     assert {outcome["error"]["code"] for outcome in outcomes if not outcome["ok"]} == {"revision_conflict"}
-    assert "---\n" in (tmp_path / "vault" / "notes" / f"{current['id']}.md").read_text(encoding="utf-8")
+    assert "---\n" in (tmp_path / "vault" / "Projects" / "dotfiles" / f"{current['id']}.md").read_text(encoding="utf-8")
     conflicts = sorted((tmp_path / "vault" / "Conflicts").glob("*.md"))
     assert len(conflicts) == 6
     preimages = [path for path in conflicts if path.name.endswith(".preimage.md")]

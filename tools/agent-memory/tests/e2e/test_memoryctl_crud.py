@@ -94,7 +94,7 @@ def test_cli_and_mcp_share_one_canonical_record(tmp_path, run_cli, mcp_client):
                        "--content", "Use one canonical local memory vault.")
     assert replayed["result"]["id"] == created["result"]["id"]
     assert UUID(created["result"]["id"]).version == 7
-    note = tmp_path / "vault" / "notes" / f"{created['result']['id']}.md"
+    note = tmp_path / "vault" / "Projects" / "dotfiles" / f"{created['result']['id']}.md"
     assert note.is_file()
     assert note.read_text(encoding="utf-8").startswith("---\n")
     assert 'status: "active"' in note.read_text(encoding="utf-8")
@@ -158,7 +158,7 @@ def test_cli_uses_canonical_default_paths(tmp_path, run_cli):
     created = run_cli({"HOME": str(home)}, "add", "--request-id", "req-default-paths",
                       "--type", "fact", "--scope", "global", "--content", "Defaults are canonical.")
 
-    assert (home / ".agents" / "memory" / "notes" / f"{created['result']['id']}.md").is_file()
+    assert (home / ".agents" / "memory" / "Global" / f"{created['result']['id']}.md").is_file()
     assert (home / ".local" / "share" / "agent-memory" / "memory.sqlite3").is_file()
     current = run_cli({"HOME": str(home)}, "get", "--id", created["result"]["id"])["result"]
     superseded = run_cli(
@@ -225,7 +225,7 @@ Legacy Task 1 note.
         "content": "Legacy Task 1 note.", "importance": 0.8, "confidence": 0.95,
         "pinned": False, "tags": ["legacy"], "status": "active", "revision": 1,
         "content_hash": "legacy-hash", "created_at": "2026-09-07T12:00:00Z",
-        "updated_at": "2026-09-07T12:00:00Z", "source_client": "unknown",
+        "updated_at": "2026-09-07T12:00:00Z", "source_client": "unknown", "source_session": "unknown", "supersedes": [],
     }]
     legacy = run_cli(env, "get", "--id", legacy_id)["result"]
     upgraded = run_cli(
@@ -234,7 +234,7 @@ Legacy Task 1 note.
         "--status", "superseded",
     )["result"]
     assert upgraded["status"] == "superseded"
-    assert 'status: "superseded"' in (notes / f"{legacy_id}.md").read_text(encoding="utf-8")
+    assert 'status: "superseded"' in (tmp_path / "vault" / "Projects" / "dotfiles" / f"{legacy_id}.md").read_text(encoding="utf-8")
     with sqlite3.connect(state / "memory.sqlite3") as catalog:
         assert {column[1] for column in catalog.execute("PRAGMA table_info(memories)")} >= {"status"}
         assert {column[1] for column in catalog.execute("PRAGMA table_info(idempotency)")} >= {"result_json"}

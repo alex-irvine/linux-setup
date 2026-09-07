@@ -6,6 +6,8 @@ import os
 import secrets
 import tempfile
 import time
+import re
+from datetime import datetime, UTC
 from dataclasses import replace
 from contextlib import contextmanager
 from pathlib import Path
@@ -25,14 +27,17 @@ from .rank import cosine, reciprocal_rank
 class MarkdownStore:
     def __init__(self, vault: Path, home: Path) -> None:
         self.vault = vault
-        self.notes = vault / "notes"
+        self.notes = vault / "notes"  # Legacy migration input only.
+        self.global_notes = vault / "Global"
+        self.projects = vault / "Projects"
         self.home = home
         self.lock_path = home / "memory.lock"
         self.journal_path = home / "mutations.jsonl"
         self.audit_path = home / "audit.jsonl"
         self.authorizations_path = home / "authorizations.json"
         self.conflicts = vault / "Conflicts"
-        self.notes.mkdir(parents=True, exist_ok=True)
+        self.global_notes.mkdir(parents=True, exist_ok=True)
+        self.projects.mkdir(parents=True, exist_ok=True)
         self.home.mkdir(parents=True, exist_ok=True)
 
     @contextmanager
@@ -44,8 +49,22 @@ class MarkdownStore:
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
+    @staticmethod
+    def _slug(project: str | None) -> str:
+        slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", project or "").strip("-.").lower()
+        if not slug:
+            raise MemoryError("invalid_project", "project scope requires a safe project name")
+        return slug[:100]
+
+    def _path_for(self, record: MemoryRecord) -> Path:
+        if record.scope == "global":
+            return self.global_notes / f"{record.id}.md"
+        return self.projects / self._slug(record.project) / f"{record.id}.md"
+
     def _path(self, memory_id: UUID) -> Path:
-        return self.notes / f"{memory_id}.md"
+        filename = f"{memory_id}.md"
+        candidates = [self.global_notes / filename, self.notes / filename, *self.projects.glob(f"*/{filename}")]
+        return next((path for path in candidates if path.exists()), self.global_notes / filename)
 
     def get(self, memory_id: UUID) -> MemoryRecord:
         path = self._path(memory_id)
@@ -100,7 +119,8 @@ class MarkdownStore:
         return values
 
     def _write_note(self, record: MemoryRecord) -> None:
-        destination = self._path(record.id)
+        destination = self._path_for(record)
+        destination.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary = tempfile.mkstemp(prefix=f".{record.id}.", dir=destination.parent)
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as file:
@@ -113,6 +133,15 @@ class MarkdownStore:
                 os.fsync(directory)
             finally:
                 os.close(directory)
+            # Scope/project changes move the note atomically after the replacement.
+            for prior in (self.global_notes / f"{record.id}.md", self.notes / f"{record.id}.md", *self.projects.glob(f"*/{record.id}.md")):
+                if prior != destination and prior.exists():
+                    prior.unlink()
+                    directory = os.open(prior.parent, os.O_DIRECTORY)
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
@@ -183,7 +212,7 @@ class MarkdownStore:
                     return replay
                 raise MemoryError("idempotency_conflict", "request_id belongs to a different mutation")
             now = utc_now()
-            record = MemoryRecord(uuid7(), request.type, request.scope, request.project, request.content, request.importance, request.confidence, request.pinned, tuple(request.tags), "active", 1, content_hash(request.content), now, now, request.source_client)
+            record = MemoryRecord(uuid7(), request.type, request.scope, request.project, request.content, request.importance, request.confidence, request.pinned, tuple(request.tags), "active", 1, content_hash(request.content), now, now, request.source_client, request.source_session, tuple(request.supersedes))
             self._write_note(record)
             self._journal("add", record, request.request_id, payload_hash, record)
             index.upsert(record)
@@ -205,7 +234,7 @@ class MarkdownStore:
                 self._write_conflict(current, request)
                 raise
             content = request.content if request.content is not None else current.content
-            record = MemoryRecord(current.id, current.type, current.scope, current.project, content, request.importance if request.importance is not None else current.importance, request.confidence if request.confidence is not None else current.confidence, request.pinned if request.pinned is not None else current.pinned, tuple(request.tags) if request.tags is not None else current.tags, request.status if request.status is not None else current.status, current.revision + 1, content_hash(content), current.created_at, utc_now(), current.source_client)
+            record = MemoryRecord(current.id, current.type, current.scope, current.project, content, request.importance if request.importance is not None else current.importance, request.confidence if request.confidence is not None else current.confidence, request.pinned if request.pinned is not None else current.pinned, tuple(request.tags) if request.tags is not None else current.tags, request.status if request.status is not None else current.status, current.revision + 1, content_hash(content), current.created_at, utc_now(), current.source_client, current.source_session, current.supersedes)
             self._write_note(record)
             self._journal("update", record, request.request_id, payload_hash, record)
             index.upsert(record)
@@ -268,7 +297,7 @@ class MarkdownStore:
             current = self.get(request.memory_id)
             self._assert_current(current, request.expected_revision, request.expected_content_hash)
             self._path(current.id).unlink()
-            directory = os.open(self.notes, os.O_DIRECTORY)
+            directory = os.open(self._path(current.id).parent, os.O_DIRECTORY)
             try:
                 os.fsync(directory)
             finally:
@@ -422,33 +451,54 @@ class MemoryService:
         lexical = self.index.search_lexical(query).memories
         lexical_ranks = {record["id"]: rank for rank, record in enumerate(lexical, 1)}
         candidates = self.index.candidates(query)
-        embedded = self.ollama.embed([query.query, *[record.content for record in candidates]])
         semantic_ranks: dict[str, int] = {}
         semantic_status = "unavailable"
+        embedded = self.ollama.embed([query.query])
         if not isinstance(embedded, DegradedStatus):
-            semantic_status = "available"
-            scored = sorted(zip(candidates, embedded.vectors[1:]), key=lambda item: (-cosine(embedded.vectors[0], item[1]), str(item[0].id)))
-            semantic_ranks = {str(record.id): rank for rank, (record, _) in enumerate(scored, 1)}
+            vectors = self.index.embeddings(candidates)
+            missing = [record for record in candidates if str(record.id) not in vectors]
+            if missing:
+                generated = self.ollama.embed([record.content for record in missing])
+                if not isinstance(generated, DegradedStatus):
+                    self.index.remember_embeddings(missing, generated.vectors)
+                    vectors.update({str(record.id): vector for record, vector in zip(missing, generated.vectors)})
+            dimensions = len(embedded.vectors[0])
+            vectors = {memory_id: vector for memory_id, vector in vectors.items() if len(vector) == dimensions}
+            if vectors:
+                semantic_status = "available"
+                scored = sorted(((record, vectors[str(record.id)]) for record in candidates if str(record.id) in vectors), key=lambda item: (-cosine(embedded.vectors[0], item[1]), str(item[0].id)))
+                semantic_ranks = {str(record.id): rank for rank, (record, _) in enumerate(scored, 1)}
         by_id = {str(record.id): record for record in candidates}
         hits = []
         for memory_id in set(lexical_ranks) | set(semantic_ranks):
             record = by_id[memory_id]
             lexical_rank, semantic_rank = lexical_ranks.get(memory_id), semantic_ranks.get(memory_id)
             score = (reciprocal_rank(lexical_rank) if lexical_rank else 0) + (reciprocal_rank(semantic_rank) if semantic_rank else 0)
-            boosts = []
+            boosts, contributions = [], {}
             if query.project and record.project == query.project:
                 boosts.append("project_exact")
-                score += 0.001
+                contributions["project_exact"] = 0.001; score += 0.001
             if record.pinned:
                 boosts.append("pinned")
-                score += 0.001
+                contributions["pinned"] = 0.001; score += 0.001
+            importance = min(0.002, max(0.0, record.importance) * 0.002)
+            confidence = min(0.002, max(0.0, record.confidence) * 0.002)
+            boosts.extend(["importance", "confidence"])
+            contributions["importance"] = importance; contributions["confidence"] = confidence
+            score += importance + confidence
             positive, negative = self.index.feedback_counts(memory_id)
             if positive > negative:
                 boosts.append("positive_feedback")
-                score += 0.001
+                contributions["positive_feedback"] = 0.001; score += 0.001
+            try:
+                age_days = max(0.0, (datetime.now(UTC) - datetime.fromisoformat(record.updated_at.replace("Z", "+00:00"))).total_seconds() / 86400)
+            except ValueError:
+                age_days = 365.0
+            recency = max(0.0, min(0.002, (30 - min(30, age_days)) / 30 * 0.002))
+            boosts.append("recency"); contributions["recency"] = recency; score += recency
             hit = record.to_dict()
             hit.update({"score": score, "lexical_rank": lexical_rank, "semantic_rank": semantic_rank,
-                        "boosts": boosts, "explanation": {"rrf": "1 / (60 + rank)", "positive": positive, "negative": negative}})
+                        "boosts": boosts, "explanation": {"rrf": "1 / (60 + rank)", "positive": positive, "negative": negative, "boost_contributions": contributions}})
             hits.append(hit)
         hits.sort(key=lambda hit: (hit["lexical_rank"] is None, -hit["score"], hit["id"]))
         return SearchResult(hits, semantic_status)
@@ -469,7 +519,7 @@ class MemoryService:
         return self.store.feedback(request, self.index)
 
     def _notes(self):
-        for path in sorted(self.store.notes.glob("*.md")):
+        for path in self._note_paths():
             try:
                 yield path, record_from_dict(frontmatter.load(path.read_text(encoding="utf-8"))), None
             except (OSError, ValueError, KeyError, TypeError) as error:
@@ -509,13 +559,18 @@ class MemoryService:
             self.index.set_feedback(memory_id, counts["positive"], counts["negative"])
         return RebuildReport(active, invalid)
 
+    def _note_paths(self):
+        yield from sorted(self.store.global_notes.glob("*.md"))
+        yield from sorted(self.store.projects.glob("*/*.md"))
+        yield from sorted(self.store.notes.glob("*.md"))
+
     def maintain(self, security_scan: bool = False, fail_on_finding: bool = False) -> dict:
         reconciled = self.reconcile()
         rebuilt = self.rebuild()
         findings = []
         if security_scan:
             from .capture import unsafe_reason
-            for path in sorted(self.store.notes.glob("*.md")):
+            for path in self._note_paths():
                 reason = unsafe_reason(path.read_text(encoding="utf-8"))
                 if reason:
                     findings.append({"path": str(path), "reason": reason})
