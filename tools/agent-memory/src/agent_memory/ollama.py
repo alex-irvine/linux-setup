@@ -35,3 +35,16 @@ class OllamaClient:
             return EmbeddingBatch([[float(value) for value in vector] for vector in vectors])
         except (OSError, URLError, ValueError, KeyError, json.JSONDecodeError) as error:
             return DegradedStatus(str(error))
+
+    def review_capture(self, candidate: dict) -> dict | DegradedStatus:
+        request = Request(f"{self.url}/api/generate", data=json.dumps({"stream": False,
+            "prompt": "Return strict JSON only: {\\\"accept\\\": boolean, \\\"reason\\\": string}. Review this memory candidate: " + json.dumps(candidate, sort_keys=True)}).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                review = json.loads(json.loads(response.read())["response"])
+            if set(review) != {"accept", "reason"} or not isinstance(review["accept"], bool) or not isinstance(review["reason"], str):
+                return DegradedStatus("invalid capture review")
+            return review
+        except (OSError, URLError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
+            return DegradedStatus(str(error))

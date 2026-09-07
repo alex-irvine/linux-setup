@@ -458,15 +458,27 @@ class MemoryService:
             self.index.set_feedback(memory_id, counts["positive"], counts["negative"])
         return RebuildReport(active, invalid)
 
-    def maintain(self) -> dict:
+    def maintain(self, security_scan: bool = False, fail_on_finding: bool = False) -> dict:
         reconciled = self.reconcile()
         rebuilt = self.rebuild()
-        return {"reconcile": reconciled.to_dict(), "rebuild": rebuilt.to_dict()}
+        findings = []
+        if security_scan:
+            from .capture import unsafe_reason
+            for path in sorted(self.store.notes.glob("*.md")):
+                reason = unsafe_reason(path.read_text(encoding="utf-8"))
+                if reason:
+                    findings.append({"path": str(path), "reason": reason})
+            if findings and fail_on_finding:
+                raise MemoryError("security_findings", "security scan found unsafe content")
+        return {"reconcile": reconciled.to_dict(), "rebuild": rebuilt.to_dict(), "security_findings": findings}
 
     def status(self) -> dict:
         invalid = [InvalidNote(path, "invalid memory frontmatter") for path in self.index.excluded_paths()]
         available = not isinstance(self.ollama.embed(["status"]), DegradedStatus)
-        return {"semantic_status": "available" if available else "unavailable", "invalid_notes": [note.to_dict() for note in invalid]}
+        from .capture import Outbox
+        paused = self.store.home / "sync-paused.json"
+        return {"semantic_status": "available" if available else "unavailable", "invalid_notes": [note.to_dict() for note in invalid],
+                "outbox": Outbox(self.store.home).counts(), "sync_paused": json.loads(paused.read_text(encoding="utf-8")) if paused.exists() else None}
 
     def authorize(self, action: str, ttl: int) -> dict:
         return self.store.authorize(action, ttl)

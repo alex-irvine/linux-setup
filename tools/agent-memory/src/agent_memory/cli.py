@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import UUID
 
 from .index import MemoryIndex
+from .capture import Outbox, Worker
 from .model import (AddRequest, DeleteRequest, FeedbackRequest, ListQuery, MemoryError,
                     PinRequest, ScopeRequest, SearchQuery, UpdateRequest)
 from .store import MarkdownStore, MemoryService
@@ -38,7 +39,7 @@ def parser() -> argparse.ArgumentParser:
     add.add_argument("--pinned", action="store_true")
     add.add_argument("--tag", action="append", default=[])
     for name in ("get", "list", "search", "update", "delete", "status", "pin", "scope",
-                 "feedback", "rebuild", "reconcile", "maintain", "delete-all", "purge"):
+                  "feedback", "rebuild", "reconcile", "maintain", "delete-all", "purge", "enqueue", "worker"):
         commands.add_parser(name)
     commands.choices["get"].add_argument("--id", required=True)
     commands.choices["list"].add_argument("--project")
@@ -98,6 +99,20 @@ def parser() -> argparse.ArgumentParser:
     authorize = admin_commands.add_parser("authorize")
     authorize.add_argument("--action", required=True, choices=("delete-all", "purge"))
     authorize.add_argument("--ttl", type=int, default=60)
+    enqueue = commands.choices["enqueue"]
+    enqueue.add_argument("--kind", required=True, choices=("capture", "sync"))
+    enqueue.add_argument("--json-input", required=True)
+    worker = commands.choices["worker"]
+    worker_group = worker.add_mutually_exclusive_group(required=True)
+    worker_group.add_argument("--once", action="store_true")
+    worker_group.add_argument("--drain", action="store_true")
+    sync = commands.add_parser("sync")
+    sync_commands = sync.add_subparsers(dest="sync_command", required=True)
+    pause = sync_commands.add_parser("pause")
+    pause.add_argument("--reason", required=True)
+    sync_commands.add_parser("resume")
+    commands.choices["maintain"].add_argument("--security-scan", action="store_true")
+    commands.choices["maintain"].add_argument("--fail-on-finding", action="store_true")
     return root
 
 
@@ -133,7 +148,7 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
     if args.command == "reconcile":
         return service.reconcile()
     if args.command == "maintain":
-        return service.maintain()
+        return service.maintain(args.security_scan, args.fail_on_finding)
     if args.command == "status":
         return service.status()
     if args.command == "delete-all":
@@ -144,13 +159,30 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
         return service.purge(args.request_id, args.token, UUID(args.memory_id), args.content_hash)
     if args.command == "admin":
         return service.authorize(args.action, args.ttl)
+    if args.command == "enqueue":
+        raw = sys.stdin.read() if args.json_input == "-" else Path(args.json_input).read_text(encoding="utf-8")
+        return Outbox(service.store.home).enqueue(args.kind, json.loads(raw))
+    if args.command == "worker":
+        repo = Path(os.environ["AGENT_MEMORY_REPO"]) if os.environ.get("AGENT_MEMORY_REPO") else None
+        return Worker(service, service.store.home, repo).run(args.drain)
+    if args.command == "sync":
+        marker = service.store.home / "sync-paused.json"
+        if args.sync_command == "pause":
+            marker.write_text(json.dumps({"reason": args.reason, "at": __import__("agent_memory.model", fromlist=["utc_now"]).utc_now()}), encoding="utf-8")
+            return {"paused": True, "reason": args.reason}
+        marker.unlink(missing_ok=True)
+        return {"paused": False}
     raise MemoryError("invalid_request", "unsupported command")
 
 
 def main(argv: list[str] | None = None) -> int:
     try:
         args = parser().parse_args(argv)
-        print(json.dumps({"ok": True, "result": result(dispatch(service_from_env(), args))}, separators=(",", ":")))
+        service = service_from_env()
+        value = dispatch(service, args)
+        if args.command in {"add", "update", "delete", "pin", "scope", "purge", "delete-all"} and os.environ.get("AGENT_MEMORY_REPO"):
+            Worker(service, service.store.home, Path(os.environ["AGENT_MEMORY_REPO"])).queue_sync()
+        print(json.dumps({"ok": True, "result": result(value)}, separators=(",", ":")))
         return 0
     except MemoryError as error:
         print(json.dumps({"ok": False, "error": {"code": error.code, "message": error.message}}, separators=(",", ":")))
