@@ -583,33 +583,45 @@ class MemoryService:
         for memory_id in set(lexical_ranks) | set(semantic_ranks):
             record = by_id[memory_id]
             lexical_rank, semantic_rank = lexical_ranks.get(memory_id), semantic_ranks.get(memory_id)
-            score = (reciprocal_rank(lexical_rank) if lexical_rank else 0) + (reciprocal_rank(semantic_rank) if semantic_rank else 0)
+            rrf_score = (reciprocal_rank(lexical_rank) if lexical_rank else 0) + (reciprocal_rank(semantic_rank) if semantic_rank else 0)
             boosts, contributions = [], {}
             if query.project and record.project == query.project:
                 boosts.append("project_exact")
-                contributions["project_exact"] = 0.001; score += 0.001
+                contributions["project_exact"] = 0.001
             if record.pinned:
                 boosts.append("pinned")
-                contributions["pinned"] = 0.001; score += 0.001
+                contributions["pinned"] = 0.001
             importance = min(0.002, max(0.0, record.importance) * 0.002)
             confidence = min(0.002, max(0.0, record.confidence) * 0.002)
             boosts.extend(["importance", "confidence"])
             contributions["importance"] = importance; contributions["confidence"] = confidence
-            score += importance + confidence
             positive, negative = self.index.feedback_counts(memory_id)
             if positive > negative:
                 boosts.append("positive_feedback")
-                contributions["positive_feedback"] = 0.001; score += 0.001
+                contributions["positive_feedback"] = 0.001
             try:
                 age_days = max(0.0, (datetime.now(UTC) - datetime.fromisoformat(record.updated_at.replace("Z", "+00:00"))).total_seconds() / 86400)
             except ValueError:
                 age_days = 365.0
             recency = max(0.0, min(0.002, (30 - min(30, age_days)) / 30 * 0.002))
-            boosts.append("recency"); contributions["recency"] = recency; score += recency
+            boosts.append("recency"); contributions["recency"] = recency
             hit = record.to_dict()
-            hit.update({"score": score, "lexical_rank": lexical_rank, "semantic_rank": semantic_rank,
+            hit.update({"score": rrf_score, "rrf_score": rrf_score, "lexical_rank": lexical_rank, "semantic_rank": semantic_rank,
                         "boosts": boosts, "explanation": {"rrf": "1 / (60 + rank)", "positive": positive, "negative": negative, "boost_contributions": contributions}})
             hits.append(hit)
+        rrf_scores = sorted({hit["rrf_score"] for hit in hits}, reverse=True)
+        gaps = [left - right for left, right in zip(rrf_scores, rrf_scores[1:])]
+        boost_cap = min(0.002, min(gaps) / 2) if gaps else 0.002
+        for hit in hits:
+            contributions = hit["explanation"]["boost_contributions"]
+            total = sum(contributions.values())
+            if total > boost_cap:
+                # Leave a rounding margin so serialized contributions never exceed the cap.
+                scale = boost_cap / total * (1 - 1e-12)
+                contributions = {name: value * scale for name, value in contributions.items()}
+                hit["explanation"]["boost_contributions"] = contributions
+            hit["score"] = hit.pop("rrf_score") + sum(contributions.values())
+            hit["explanation"]["boost_cap"] = boost_cap
         hits.sort(key=lambda hit: (-hit["score"], hit["id"]))
         return SearchResult(hits, semantic_status)
 
