@@ -6,7 +6,7 @@ DOTFILES="${DOTFILES:-$HOME/dotfiles}"
 AGENT_MEMORY_HOME="${AGENT_MEMORY_HOME:-$HOME/.local/share/agent-memory}"
 AGENT_MEMORY_VAULT="${AGENT_MEMORY_VAULT:-$HOME/.agents/memory}"
 OLLAMA_EMBED_MODEL="${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
-PROJECT="$ROOT/tools/agent-memory"
+PROJECT="${AGENT_MEMORY_PROJECT:-$ROOT/tools/agent-memory}"
 MEMORYCTL="$PROJECT/.venv/bin/memoryctl"
 
 die() { printf '[agent-memory-setup] %s\n' "$*" >&2; exit 1; }
@@ -31,9 +31,18 @@ test -x "$HOME/.local/bin/memoryctl" || die "memoryctl link is not executable: $
 
 stow --dir="$DOTFILES" --target="$HOME" --restow agents systemd || die "failed to stow the agents and systemd packages from $DOTFILES"
 test -L "$HOME/.agents/memory" || die "canonical vault was not stowed at $HOME/.agents/memory"
+if [[ "$AGENT_MEMORY_VAULT" != "$HOME/.agents/memory" ]]; then
+  mkdir -p "$AGENT_MEMORY_VAULT"
+  chmod 700 "$AGENT_MEMORY_VAULT"
+fi
 test -d "$AGENT_MEMORY_VAULT" || die "memory vault is unavailable at $AGENT_MEMORY_VAULT"
 
-if ! ollama list | awk -v model="$OLLAMA_EMBED_MODEL" '$1 == model { found = 1 } END { exit !found }'; then
+ollama_models="$(ollama list)" || die "failed to inspect installed Ollama models"
+if ! awk -v model="$OLLAMA_EMBED_MODEL" '
+  function normalize(name) { sub(/:latest$/, "", name); return name }
+  normalize($1) == normalize(model) { found = 1 }
+  END { exit !found }
+' <<<"$ollama_models"; then
   ollama pull "$OLLAMA_EMBED_MODEL" || die "failed to pull Ollama embedding model: $OLLAMA_EMBED_MODEL"
 fi
 
