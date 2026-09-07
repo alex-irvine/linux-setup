@@ -176,6 +176,11 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
             return {"paused": True, "reason": args.reason}
         with Outbox(service.store.home).locked():
             marker.unlink(missing_ok=True)
+            directory = os.open(marker.parent, os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
         return {"paused": False}
     raise MemoryError("invalid_request", "unsupported command")
 

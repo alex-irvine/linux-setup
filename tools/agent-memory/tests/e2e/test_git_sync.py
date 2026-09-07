@@ -85,6 +85,7 @@ def test_sync_pause_and_index_lock_retain_work(git_fixture):
     memory(repo, env, "add", "--request-id", "paused", "--type", "fact", "--scope", "global", "--content", "paused write")
     assert memory(repo, env, "worker", "--drain")["sync"]["paused"] is True
     memory(repo, env, "sync", "resume")
+    assert memory(repo, env, "status")["sync_paused"] is None
     (repo / ".git/index.lock").write_text("synthetic lock", encoding="utf-8")
     retained = memory(repo, env, "worker", "--drain")
     assert retained["retrying"] >= 1
