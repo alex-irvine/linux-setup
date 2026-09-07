@@ -12,7 +12,7 @@ from . import frontmatter
 from .index import MemoryIndex
 from .model import (AddRequest, DeleteRequest, DeleteResult, ListQuery, MemoryError,
                     MemoryRecord, SearchQuery, SearchResult, UpdateRequest, content_hash,
-                    request_hash, utc_now, uuid7)
+                    delete_result_from_dict, record_from_dict, request_hash, utc_now, uuid7)
 
 
 class MarkdownStore:
@@ -41,16 +41,30 @@ class MarkdownStore:
         path = self._path(memory_id)
         if not path.exists():
             raise MemoryError("not_found", f"memory {memory_id} does not exist")
-        values = frontmatter.load(path.read_text(encoding="utf-8"))
-        return MemoryRecord(UUID(values["id"]), values["type"], values["scope"], values["project"], values["content"], values["importance"], values["confidence"], values["pinned"], tuple(values["tags"]), values["revision"], values["content_hash"], values["created_at"], values["updated_at"])
+        return record_from_dict(frontmatter.load(path.read_text(encoding="utf-8")))
 
-    def _check_idempotency(self, index: MemoryIndex, request_id: str, payload_hash: str) -> UUID | None:
+    def _check_idempotency(self, index: MemoryIndex, request_id: str, payload_hash: str) -> MemoryRecord | DeleteResult | None:
         existing = index.idempotency(request_id)
-        if existing is None:
+        if existing is not None:
+            stored_hash, stored_result = existing
+        else:
+            stored_hash, stored_result = self._journal_idempotency(request_id)
+        if stored_hash is None:
             return None
-        if existing[0] != payload_hash:
+        if stored_hash != payload_hash:
             raise MemoryError("idempotency_conflict", "request_id was reused with a different payload")
-        return UUID(existing[1])
+        result = json.loads(stored_result)
+        return delete_result_from_dict(result) if result["status"] == "deleted" else record_from_dict(result)
+
+    def _journal_idempotency(self, request_id: str) -> tuple[str | None, str | None]:
+        if not self.journal_path.exists():
+            return None, None
+        with self.journal_path.open(encoding="utf-8") as journal:
+            entries = [json.loads(line) for line in journal if line.strip()]
+        for entry in reversed(entries):
+            if entry.get("request_id") == request_id:
+                return entry["payload_hash"], json.dumps(entry["result"], sort_keys=True, separators=(",", ":"))
+        return None, None
 
     def _write_note(self, record: MemoryRecord) -> None:
         destination = self._path(record.id)
@@ -70,8 +84,9 @@ class MarkdownStore:
             if os.path.exists(temporary):
                 os.unlink(temporary)
 
-    def _journal(self, operation: str, record: MemoryRecord) -> None:
-        entry = json.dumps({"operation": operation, "id": str(record.id), "revision": record.revision, "content_hash": record.content_hash, "at": utc_now()}, sort_keys=True, separators=(",", ":")) + "\n"
+    def _journal(self, operation: str, record: MemoryRecord, request_id: str, payload_hash: str, result: MemoryRecord | DeleteResult) -> None:
+        result_data = result.to_dict()
+        entry = json.dumps({"operation": operation, "id": str(record.id), "revision": record.revision, "content_hash": record.content_hash, "status": result_data["status"], "request_id": request_id, "payload_hash": payload_hash, "result": result_data, "at": utc_now()}, sort_keys=True, separators=(",", ":")) + "\n"
         descriptor = os.open(self.journal_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         try:
             os.write(descriptor, entry.encode("utf-8"))
@@ -84,13 +99,15 @@ class MarkdownStore:
         with self._locked():
             replay = self._check_idempotency(index, request.request_id, payload_hash)
             if replay is not None:
-                return self.get(replay)
+                if isinstance(replay, MemoryRecord):
+                    return replay
+                raise MemoryError("idempotency_conflict", "request_id belongs to a different mutation")
             now = utc_now()
-            record = MemoryRecord(uuid7(), request.type, request.scope, request.project, request.content, request.importance, request.confidence, request.pinned, tuple(request.tags), 1, content_hash(request.content), now, now)
+            record = MemoryRecord(uuid7(), request.type, request.scope, request.project, request.content, request.importance, request.confidence, request.pinned, tuple(request.tags), "active", 1, content_hash(request.content), now, now)
             self._write_note(record)
-            self._journal("add", record)
+            self._journal("add", record, request.request_id, payload_hash, record)
             index.upsert(record)
-            index.remember_idempotency(request.request_id, payload_hash, str(record.id))
+            index.remember_idempotency(request.request_id, payload_hash, record.to_dict())
             return record
 
     def update(self, request: UpdateRequest, index: MemoryIndex) -> MemoryRecord:
@@ -98,15 +115,17 @@ class MarkdownStore:
         with self._locked():
             replay = self._check_idempotency(index, request.request_id, payload_hash)
             if replay is not None:
-                return self.get(replay)
+                if isinstance(replay, MemoryRecord):
+                    return replay
+                raise MemoryError("idempotency_conflict", "request_id belongs to a different mutation")
             current = self.get(request.memory_id)
             self._assert_current(current, request.expected_revision, request.expected_content_hash)
             content = request.content if request.content is not None else current.content
-            record = MemoryRecord(current.id, current.type, current.scope, current.project, content, request.importance if request.importance is not None else current.importance, request.confidence if request.confidence is not None else current.confidence, request.pinned if request.pinned is not None else current.pinned, tuple(request.tags) if request.tags is not None else current.tags, current.revision + 1, content_hash(content), current.created_at, utc_now())
+            record = MemoryRecord(current.id, current.type, current.scope, current.project, content, request.importance if request.importance is not None else current.importance, request.confidence if request.confidence is not None else current.confidence, request.pinned if request.pinned is not None else current.pinned, tuple(request.tags) if request.tags is not None else current.tags, request.status if request.status is not None else current.status, current.revision + 1, content_hash(content), current.created_at, utc_now())
             self._write_note(record)
-            self._journal("update", record)
+            self._journal("update", record, request.request_id, payload_hash, record)
             index.upsert(record)
-            index.remember_idempotency(request.request_id, payload_hash, str(record.id))
+            index.remember_idempotency(request.request_id, payload_hash, record.to_dict())
             return record
 
     def delete(self, request: DeleteRequest, index: MemoryIndex) -> DeleteResult:
@@ -114,7 +133,9 @@ class MarkdownStore:
         with self._locked():
             replay = self._check_idempotency(index, request.request_id, payload_hash)
             if replay is not None:
-                return DeleteResult(replay, request.expected_revision, request.expected_content_hash)
+                if isinstance(replay, DeleteResult):
+                    return replay
+                raise MemoryError("idempotency_conflict", "request_id belongs to a different mutation")
             current = self.get(request.memory_id)
             self._assert_current(current, request.expected_revision, request.expected_content_hash)
             self._path(current.id).unlink()
@@ -123,10 +144,11 @@ class MarkdownStore:
                 os.fsync(directory)
             finally:
                 os.close(directory)
-            self._journal("delete", current)
+            result = DeleteResult(current.id, current.revision, current.content_hash)
+            self._journal("delete", current, request.request_id, payload_hash, result)
             index.remove(str(current.id))
-            index.remember_idempotency(request.request_id, payload_hash, str(current.id))
-            return DeleteResult(current.id, current.revision, current.content_hash)
+            index.remember_idempotency(request.request_id, payload_hash, result.to_dict())
+            return result
 
     @staticmethod
     def _assert_current(current: MemoryRecord, revision: int, digest: str) -> None:

@@ -16,13 +16,13 @@ def call(service, name: str, arguments: dict):
     if name == "memory_add":
         return service.add(AddRequest(arguments["request_id"], arguments["type"], arguments["scope"], arguments["content"], arguments.get("project"), arguments.get("importance", 0.5), arguments.get("confidence", 1.0), arguments.get("pinned", False), tuple(arguments.get("tags", ()))))
     if name == "memory_search":
-        return service.search(SearchQuery(arguments["query"], arguments.get("project")))
+        return service.search(SearchQuery(arguments["query"], arguments.get("project"), arguments.get("status", "active")))
     if name == "memory_get":
         return service.get(UUID(arguments["id"]))
     if name == "memory_list":
-        return service.list(ListQuery(arguments.get("project"), arguments.get("scope"), arguments.get("type")))
+        return service.list(ListQuery(arguments.get("project"), arguments.get("scope"), arguments.get("type"), arguments.get("status", "active")))
     if name == "memory_update":
-        return service.update(UpdateRequest(UUID(arguments["id"]), arguments["expected_revision"], arguments["expected_content_hash"], arguments["request_id"], arguments.get("content"), arguments.get("importance"), arguments.get("confidence"), arguments.get("pinned"), tuple(arguments["tags"]) if "tags" in arguments else None))
+        return service.update(UpdateRequest(UUID(arguments["id"]), arguments["expected_revision"], arguments["expected_content_hash"], arguments["request_id"], arguments.get("content"), arguments.get("importance"), arguments.get("confidence"), arguments.get("pinned"), tuple(arguments["tags"]) if "tags" in arguments else None, arguments.get("status")))
     if name == "memory_delete":
         return service.delete(DeleteRequest(UUID(arguments["id"]), arguments["expected_revision"], arguments["expected_content_hash"], arguments["request_id"]))
     if name == "memory_status":

@@ -14,8 +14,8 @@ from .store import MarkdownStore, MemoryService
 
 
 def service_from_env() -> MemoryService:
-    home = Path(os.environ.get("AGENT_MEMORY_HOME", Path.home() / ".local/state/agent-memory"))
-    vault = Path(os.environ.get("AGENT_MEMORY_VAULT", Path.home() / ".local/share/agent-memory/vault"))
+    home = Path(os.environ.get("AGENT_MEMORY_HOME", Path.home() / ".local/share/agent-memory"))
+    vault = Path(os.environ.get("AGENT_MEMORY_VAULT", Path.home() / ".agents/memory"))
     return MemoryService(MarkdownStore(vault, home), MemoryIndex(home / "memory.sqlite3"))
 
 
@@ -43,8 +43,10 @@ def parser() -> argparse.ArgumentParser:
     commands.choices["list"].add_argument("--project")
     commands.choices["list"].add_argument("--scope")
     commands.choices["list"].add_argument("--type")
+    commands.choices["list"].add_argument("--status", default="active")
     commands.choices["search"].add_argument("--query", required=True)
     commands.choices["search"].add_argument("--project")
+    commands.choices["search"].add_argument("--status", default="active")
     update = commands.choices["update"]
     update.add_argument("--id", required=True)
     update.add_argument("--expected-revision", type=int, required=True)
@@ -55,6 +57,7 @@ def parser() -> argparse.ArgumentParser:
     update.add_argument("--confidence", type=float)
     update.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
     update.add_argument("--tag", action="append")
+    update.add_argument("--status")
     delete = commands.choices["delete"]
     delete.add_argument("--id", required=True)
     delete.add_argument("--expected-revision", type=int, required=True)
@@ -77,11 +80,11 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
     if args.command == "get":
         return service.get(UUID(args.id))
     if args.command == "list":
-        return service.list(ListQuery(args.project, args.scope, args.type))
+        return service.list(ListQuery(args.project, args.scope, args.type, args.status))
     if args.command == "search":
-        return service.search(SearchQuery(args.query, args.project))
+        return service.search(SearchQuery(args.query, args.project, args.status))
     if args.command == "update":
-        return service.update(UpdateRequest(UUID(args.id), args.expected_revision, args.expected_content_hash, args.request_id, args.content, args.importance, args.confidence, args.pinned, tuple(args.tag) if args.tag is not None else None))
+        return service.update(UpdateRequest(UUID(args.id), args.expected_revision, args.expected_content_hash, args.request_id, args.content, args.importance, args.confidence, args.pinned, tuple(args.tag) if args.tag is not None else None, args.status))
     if args.command == "delete":
         return service.delete(DeleteRequest(UUID(args.id), args.expected_revision, args.expected_content_hash, args.request_id))
     return {"status": "ok"}
