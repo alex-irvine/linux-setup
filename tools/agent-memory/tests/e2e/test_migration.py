@@ -45,6 +45,15 @@ def test_migration_is_resumable_and_accounts_for_every_source(tmp_path):
     assert report["contradictions"] == 1
     assert migration.import_local(batch)["imported"] == 0
     assert migration.verify(batch)["verified"] is True
+    excluded = next(row for row in migration._rows(batch) if row["source_identity"] == str(archive / "archive-0.md"))
+    migration.disposition(batch, str(archive / "archive-0.md"), "defer", "user_excluded_transient",
+                          "user_approved", excluded["imported_ids"][0])
+    migration.disposition(batch, str(archive / "archive-3.md"), "waive", "transient", "user_approved")
+    resumed_report = migration.report(batch)
+    assert resumed_report["local_deferrals"] == 1
+    assert resumed_report["waivers"] == 1
+    assert not (tmp_path / "vault" / "notes" / f"{excluded['imported_ids'][0]}.md").exists()
+    assert migration.verify(batch)["verified"] is True
     manifest = json.loads((tmp_path / "state" / "snapshots" / batch / "manifest.json").read_text(encoding="utf-8"))
     for entry in manifest["sources"]:
         snapshot = tmp_path / "state" / "snapshots" / batch / entry["raw_snapshot"]

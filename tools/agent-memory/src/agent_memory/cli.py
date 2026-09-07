@@ -118,11 +118,17 @@ def parser() -> argparse.ArgumentParser:
     commands.choices["maintain"].add_argument("--fail-on-finding", action="store_true")
     migrate = commands.add_parser("migrate")
     migrate_commands = migrate.add_subparsers(dest="migrate_command", required=True)
-    for name in ("snapshot", "import-local", "import-mem0", "report", "verify"):
+    for name in ("snapshot", "import-local", "import-mem0", "report", "verify", "defer", "waive"):
         command = migrate_commands.add_parser(name)
         command.add_argument("--batch", required=True)
     migrate_commands.choices["import-local"].add_argument("--stop-after", type=int)
     migrate_commands.choices["import-mem0"].add_argument("--hosted-export")
+    for name in ("defer", "waive"):
+        command = migrate_commands.choices[name]
+        command.add_argument("--source-identity", required=True)
+        command.add_argument("--reason", required=True)
+        command.add_argument("--decision", required=True)
+    migrate_commands.choices["defer"].add_argument("--note-id", required=True)
     return root
 
 
@@ -204,6 +210,10 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
             return migration.import_mem0(args.batch, pages)
         if args.migrate_command == "report":
             return migration.report(args.batch)
+        if args.migrate_command in {"defer", "waive"}:
+            return migration.disposition(args.batch, args.source_identity,
+                                         "defer" if args.migrate_command == "defer" else "waive",
+                                         args.reason, args.decision, getattr(args, "note_id", None))
         return migration.verify(args.batch)
     raise MemoryError("invalid_request", "unsupported command")
 

@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from uuid import UUID
 
 from .model import AddRequest, MemoryError
 from .store import MemoryService
@@ -133,8 +134,33 @@ class MigrationService:
     def _contradiction_key(text: str) -> str | None:
         normalized = " ".join(text.lower().split())
         if " enabled" in normalized or " disabled" in normalized:
-            return normalized.replace(" enabled", "").replace(" disabled", "")
+            return hashlib.sha256(normalized.replace(" enabled", "").replace(" disabled", "").encode("utf-8")).hexdigest()
         return None
+
+    def disposition(self, batch: str, source_identity: str, action: str, reason: str,
+                    decision: str, note_id: str | None = None) -> dict:
+        """Append a user-approved exclusion or waiver without changing snapshots."""
+        entries = {entry["source_identity"]: entry for entry in self._manifest(batch)["sources"]}
+        entry = entries.get(source_identity)
+        if entry is None or action not in {"defer", "waive"}:
+            raise MemoryError("invalid_request", "unknown migration source or disposition")
+        latest = self._latest_local(batch).get(source_identity)
+        if latest is None:
+            raise MemoryError("invalid_request", "source has no prior migration accounting")
+        if action == "defer":
+            if note_id is None or latest.get("imported_ids") != [note_id]:
+                raise MemoryError("invalid_request", "note id does not match the imported source")
+            path = self.service.store.notes / f"{UUID(note_id)}.md"
+            if not path.exists():
+                raise MemoryError("not_found", "generated note does not exist")
+            path.unlink()
+            row = self._row(entry, deferred={"status": "deferred", "reason": reason, "decision": decision})
+        else:
+            row = self._row(entry, imported_ids=latest.get("imported_ids", []),
+                            duplicates=latest.get("duplicates", []),
+                            waiver={"status": "waived", "reason": reason, "decision": decision})
+        self._append(batch, row)
+        return {"batch": batch, "source_identity": source_identity, "action": action, "reason": reason}
 
     def import_local(self, batch: str, stop_after: int | None = None) -> dict:
         manifest = self._manifest(batch)
@@ -217,7 +243,9 @@ class MigrationService:
         conflicts = sum(len(row.get("conflicts", [])) for row in latest.values())
         return {"batch": batch, "source_files": len(manifest["sources"]), "ledger_rows": len(rows),
                 "unaccounted_sources": len(unaccounted), "deferred_hosted_scopes": deferred,
-                "contradictions": conflicts, "manifest_hash": self._hash(self._manifest_path(batch).read_bytes())}
+                "contradictions": conflicts, "local_deferrals": sum(bool(row.get("deferred")) for row in latest.values()),
+                "waivers": sum(bool(row.get("waiver")) for row in latest.values()),
+                "manifest_hash": self._hash(self._manifest_path(batch).read_bytes())}
 
     def report(self, batch: str) -> dict:
         summary = self._summary(batch)
@@ -233,7 +261,7 @@ class MigrationService:
                 source_identity=Path(row["source_identity"]).name, source_hash=row.get("source_hash") or "-",
                 imported=len(row["imported_ids"]), duplicates=",".join(row["duplicates"]) or "-",
                 conflicts=",".join(row["conflicts"]) or "-", deferred=row["deferred"]["reason"] if row["deferred"] else "-",
-                failures=",".join(row["failures"]) or "-", waiver=row["waiver"] or "-"))
+                failures=",".join(row["failures"]) or "-", waiver=row["waiver"]["reason"] if row["waiver"] else "-"))
         lines.extend(["", f"Source files: {summary['source_files']}", f"Unaccounted sources: {summary['unaccounted_sources']}",
                       f"Contradictions requiring review: {summary['contradictions']}"])
         if summary["deferred_hosted_scopes"]:
