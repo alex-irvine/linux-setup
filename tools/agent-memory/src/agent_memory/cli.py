@@ -32,18 +32,21 @@ def parser() -> argparse.ArgumentParser:
     root = JsonArgumentParser(prog="memoryctl")
     commands = root.add_subparsers(dest="command", required=True)
     add = commands.add_parser("add")
-    add.add_argument("--request-id", required=True)
-    add.add_argument("--type", required=True)
-    add.add_argument("--scope", required=True)
+    add.add_argument("--request-id")
+    add.add_argument("--type")
+    add.add_argument("--scope")
     add.add_argument("--project")
-    add.add_argument("--content", required=True)
+    add.add_argument("--content")
     add.add_argument("--importance", type=float, default=0.5)
     add.add_argument("--confidence", type=float, default=1.0)
     add.add_argument("--pinned", action="store_true")
     add.add_argument("--tag", action="append", default=[])
+    add.add_argument("--source-client", default="unknown")
+    add.add_argument("--json-input")
     for name in ("get", "list", "search", "update", "delete", "status", "pin", "scope",
                   "feedback", "rebuild", "reconcile", "maintain", "delete-all", "purge", "enqueue", "worker"):
         commands.add_parser(name)
+    commands.add_parser("mcp").add_argument("--client", required=True, choices=("claude", "opencode", "hermes", "pi"))
     commands.choices["get"].add_argument("--id", required=True)
     commands.choices["list"].add_argument("--project")
     commands.choices["list"].add_argument("--scope")
@@ -55,22 +58,25 @@ def parser() -> argparse.ArgumentParser:
     commands.choices["search"].add_argument("--scope")
     commands.choices["search"].add_argument("--type")
     commands.choices["search"].add_argument("--tag", action="append", default=[])
+    commands.choices["status"].add_argument("--require-healthy", action="store_true")
     update = commands.choices["update"]
-    update.add_argument("--id", required=True)
-    update.add_argument("--expected-revision", type=int, required=True)
-    update.add_argument("--expected-content-hash", required=True)
-    update.add_argument("--request-id", required=True)
+    update.add_argument("--id")
+    update.add_argument("--expected-revision", type=int)
+    update.add_argument("--expected-content-hash")
+    update.add_argument("--request-id")
     update.add_argument("--content")
     update.add_argument("--importance", type=float)
     update.add_argument("--confidence", type=float)
     update.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
     update.add_argument("--tag", action="append")
     update.add_argument("--status")
+    update.add_argument("--json-input")
     delete = commands.choices["delete"]
-    delete.add_argument("--id", required=True)
-    delete.add_argument("--expected-revision", type=int, required=True)
-    delete.add_argument("--expected-content-hash", required=True)
-    delete.add_argument("--request-id", required=True)
+    delete.add_argument("--id")
+    delete.add_argument("--expected-revision", type=int)
+    delete.add_argument("--expected-content-hash")
+    delete.add_argument("--request-id")
+    delete.add_argument("--json-input")
     pin = commands.choices["pin"]
     pin.add_argument("--id", required=True)
     pin.add_argument("--request-id", required=True)
@@ -129,6 +135,8 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--reason", required=True)
         command.add_argument("--decision", required=True)
     migrate_commands.choices["defer"].add_argument("--note-id", required=True)
+    for command in commands.choices.values():
+        command.add_argument("--json", action="store_true")
     return root
 
 
@@ -142,7 +150,7 @@ def result(value):
 
 def dispatch(service: MemoryService, args: argparse.Namespace):
     if args.command == "add":
-        return service.add(AddRequest(args.request_id, args.type, args.scope, args.content, args.project, args.importance, args.confidence, args.pinned, tuple(args.tag)))
+        return service.add(AddRequest(args.request_id, args.type, args.scope, args.content, args.project, args.importance, args.confidence, args.pinned, tuple(args.tag), args.source_client))
     if args.command == "get":
         return service.get(UUID(args.id))
     if args.command == "list":
@@ -166,7 +174,10 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
     if args.command == "maintain":
         return service.maintain(args.security_scan, args.fail_on_finding)
     if args.command == "status":
-        return service.status()
+        value = service.status()
+        if args.require_healthy and (value["invalid_notes"] or value["sync_paused"] or value["sync_state"]["scheduling_error"]):
+            raise MemoryError("unhealthy", "memory status has invalid notes, a paused sync, or a scheduling failure")
+        return value
     if args.command == "delete-all":
         return service.delete_all(args.request_id, args.token)
     if args.command == "purge":
@@ -218,9 +229,30 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
     raise MemoryError("invalid_request", "unsupported command")
 
 
+def apply_json_input(args: argparse.Namespace) -> None:
+    path = getattr(args, "json_input", None)
+    if path is None:
+        return
+    raw = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
+    values = json.loads(raw)
+    if not isinstance(values, dict):
+        raise ValueError("JSON input must be an object")
+    for key, value in values.items():
+        if key == "tags":
+            args.tag = value
+        elif key in vars(args):
+            setattr(args, key, value)
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         args = parser().parse_args(argv)
+        if args.command == "mcp":
+            from .mcp_server import main as mcp_main
+            mcp_main(args.client)
+            return 0
+        if args.command in {"add", "update", "delete"}:
+            apply_json_input(args)
         service = service_from_env()
         value = dispatch(service, args)
         if args.command in {"add", "update", "delete", "pin", "scope", "purge", "delete-all"}:

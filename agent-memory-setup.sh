@@ -48,6 +48,8 @@ fi
 
 AGENT_MEMORY_HOME="$AGENT_MEMORY_HOME" AGENT_MEMORY_VAULT="$AGENT_MEMORY_VAULT" \
   "$HOME/.local/bin/memoryctl" rebuild || die "memoryctl rebuild failed; inspect $AGENT_MEMORY_VAULT and $AGENT_MEMORY_HOME"
+AGENT_MEMORY_HOME="$AGENT_MEMORY_HOME" AGENT_MEMORY_VAULT="$AGENT_MEMORY_VAULT" \
+  "$HOME/.local/bin/memoryctl" status --require-healthy || die "memoryctl health check failed; inspect $AGENT_MEMORY_HOME"
 
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
   systemctl --user daemon-reload || die "failed to reload user systemd units"

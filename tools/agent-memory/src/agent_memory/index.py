@@ -8,7 +8,7 @@ from pathlib import Path
 from .model import ListQuery, MemoryRecord, SearchQuery, SearchResult
 
 
-RECORD_COLUMNS = "id, type, scope, project, content, importance, confidence, pinned, tags, status, revision, content_hash, created_at, updated_at"
+RECORD_COLUMNS = "id, type, scope, project, content, importance, confidence, pinned, tags, status, revision, content_hash, created_at, updated_at, source_client"
 
 
 class MemoryIndex:
@@ -22,7 +22,8 @@ class MemoryIndex:
                     project TEXT, content TEXT NOT NULL, importance REAL NOT NULL,
                     confidence REAL NOT NULL, pinned INTEGER NOT NULL, tags TEXT NOT NULL,
                      status TEXT NOT NULL, revision INTEGER NOT NULL, content_hash TEXT NOT NULL,
-                     created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                      source_client TEXT NOT NULL DEFAULT 'unknown',
                      externally_modified INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id UNINDEXED, content);
@@ -46,6 +47,8 @@ class MemoryIndex:
             connection.execute("ALTER TABLE memories ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
         if "externally_modified" not in memory_columns:
             connection.execute("ALTER TABLE memories ADD COLUMN externally_modified INTEGER NOT NULL DEFAULT 0")
+        if "source_client" not in memory_columns:
+            connection.execute("ALTER TABLE memories ADD COLUMN source_client TEXT NOT NULL DEFAULT 'unknown'")
         idempotency_columns = {row[1] for row in connection.execute("PRAGMA table_info(idempotency)")}
         if "result_id" in idempotency_columns:
             connection.execute("ALTER TABLE idempotency RENAME TO legacy_idempotency")
@@ -69,10 +72,10 @@ class MemoryIndex:
         with self._connect() as connection:
             connection.execute("""INSERT OR REPLACE INTO memories
                 (id, type, scope, project, content, importance, confidence, pinned, tags,
-                  status, revision, content_hash, created_at, updated_at)
+                  status, revision, content_hash, created_at, updated_at, source_client)
                 VALUES (:id, :type, :scope, :project, :content, :importance, :confidence,
-                        :pinned, :tags, :status, :revision, :content_hash, :created_at,
-                         :updated_at)""", values)
+                         :pinned, :tags, :status, :revision, :content_hash, :created_at,
+                          :updated_at, :source_client)""", values)
             connection.execute("UPDATE memories SET externally_modified = ? WHERE id = ?", (int(externally_modified), values["id"]))
             connection.execute("DELETE FROM memories_fts WHERE id = ?", (values["id"],))
             connection.execute("INSERT INTO memories_fts (id, content) VALUES (?, ?)", (values["id"], values["content"]))
@@ -182,4 +185,4 @@ class MemoryIndex:
     @staticmethod
     def _record(row: tuple) -> MemoryRecord:
         from uuid import UUID
-        return MemoryRecord(UUID(row[0]), row[1], row[2], row[3], row[4], row[5], row[6], bool(row[7]), tuple(filter(None, row[8].split(","))), row[9], row[10], row[11], row[12], row[13])
+        return MemoryRecord(UUID(row[0]), row[1], row[2], row[3], row[4], row[5], row[6], bool(row[7]), tuple(filter(None, row[8].split(","))), row[9], row[10], row[11], row[12], row[13], row[14])

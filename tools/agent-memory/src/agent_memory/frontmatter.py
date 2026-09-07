@@ -5,7 +5,7 @@ import json
 from .model import MemoryRecord, normalize_content
 
 
-KEYS = ("id", "type", "scope", "project", "importance", "confidence", "pinned", "status", "tags", "revision", "content_hash", "created_at", "updated_at")
+KEYS = ("id", "type", "scope", "project", "importance", "confidence", "pinned", "status", "tags", "revision", "content_hash", "created_at", "updated_at", "source_client")
 
 
 def dump(record: MemoryRecord) -> str:
@@ -27,5 +27,6 @@ def load(text: str) -> dict:
         key, value = line.split(": ", 1)
         values[key] = json.loads(value)
     values.setdefault("status", "active")
+    values.setdefault("source_client", "unknown")
     values["content"] = normalize_content(body)
     return values

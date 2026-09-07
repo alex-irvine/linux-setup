@@ -223,7 +223,7 @@ Legacy Task 1 note.
         "content": "Legacy Task 1 note.", "importance": 0.8, "confidence": 0.95,
         "pinned": False, "tags": ["legacy"], "status": "active", "revision": 1,
         "content_hash": "legacy-hash", "created_at": "2026-09-07T12:00:00Z",
-        "updated_at": "2026-09-07T12:00:00Z",
+        "updated_at": "2026-09-07T12:00:00Z", "source_client": "unknown",
     }]
     legacy = run_cli(env, "get", "--id", legacy_id)["result"]
     upgraded = run_cli(

@@ -145,3 +145,28 @@ def test_mcp_exposes_lifecycle_tools_but_not_authorize(memory_app, fake_ollama, 
     assert {"memory_feedback", "memory_pin", "memory_scope", "memory_rebuild", "memory_reconcile",
             "memory_maintain", "memory_delete_all", "memory_purge"} <= names
     assert "memory_admin_authorize" not in names
+
+
+def test_mcp_client_identity_is_persisted_and_rebuilt(memory_app, fake_ollama, tmp_path):
+    env = {"AGENT_MEMORY_HOME": str(tmp_path / "state"), "AGENT_MEMORY_VAULT": str(tmp_path / "vault"),
+           "OLLAMA_URL": fake_ollama.url}
+    records = []
+    for client in ("claude", "opencode", "hermes", "pi"):
+        process = subprocess.Popen([sys.executable, "-m", "agent_memory.cli", "mcp", "--client", client],
+                                   env={**os.environ, **env}, text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        try:
+            request = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "memory_add", "arguments": {
+                "request_id": f"identity-{client}", "type": "fact", "scope": "project", "project": "task-8",
+                "content": f"Public fixture written by {client}.",
+            }}}
+            assert process.stdin and process.stdout
+            process.stdin.write(json.dumps(request) + "\n")
+            process.stdin.flush()
+            response = json.loads(process.stdout.readline())
+            records.append(json.loads(response["result"]["content"][0]["text"]))
+        finally:
+            process.terminate()
+            process.wait(timeout=5)
+    assert {record["source_client"] for record in records} == {"claude", "opencode", "hermes", "pi"}
+    memory_app("rebuild")
+    assert {record["source_client"] for record in memory_app("list", "--project", "task-8")["memories"]} == {"claude", "opencode", "hermes", "pi"}

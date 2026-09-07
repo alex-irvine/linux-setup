@@ -62,6 +62,7 @@ class AddRequest:
     confidence: float = 1.0
     pinned: bool = False
     tags: Sequence[str] = ()
+    source_client: str = "unknown"
 
     def __post_init__(self) -> None:
         validate_domain("type", self.type, MEMORY_TYPES)
@@ -144,12 +145,13 @@ class MemoryRecord:
     content_hash: str
     created_at: str
     updated_at: str
+    source_client: str = "unknown"
 
     def with_computed_hash(self) -> MemoryRecord:
         return MemoryRecord(self.id, self.type, self.scope, self.project, self.content,
-                            self.importance, self.confidence, self.pinned, self.tags,
-                            self.status, self.revision, content_hash(self.content),
-                            self.created_at, self.updated_at)
+                             self.importance, self.confidence, self.pinned, self.tags,
+                             self.status, self.revision, content_hash(self.content),
+                             self.created_at, self.updated_at, self.source_client)
 
     def __post_init__(self) -> None:
         validate_domain("type", self.type, MEMORY_TYPES)
@@ -254,7 +256,7 @@ class DeleteResult:
 
 
 def record_from_dict(values: dict) -> MemoryRecord:
-    return MemoryRecord(UUID(values["id"]), values["type"], values["scope"], values.get("project"), values["content"], values["importance"], values["confidence"], values["pinned"], tuple(values["tags"]), values["status"], values["revision"], values["content_hash"], values["created_at"], values["updated_at"])
+    return MemoryRecord(UUID(values["id"]), values["type"], values["scope"], values.get("project"), values["content"], values["importance"], values["confidence"], values["pinned"], tuple(values["tags"]), values["status"], values["revision"], values["content_hash"], values["created_at"], values["updated_at"], values.get("source_client", "unknown"))
 
 
 def delete_result_from_dict(values: dict) -> DeleteResult:

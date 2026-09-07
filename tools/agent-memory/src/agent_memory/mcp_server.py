@@ -14,9 +14,9 @@ TOOLS = ("memory_add", "memory_search", "memory_get", "memory_list", "memory_upd
          "memory_delete_all", "memory_purge")
 
 
-def call(service, name: str, arguments: dict):
+def call(service, name: str, arguments: dict, client: str = "unknown"):
     if name == "memory_add":
-        return service.add(AddRequest(arguments["request_id"], arguments["type"], arguments["scope"], arguments["content"], arguments.get("project"), arguments.get("importance", 0.5), arguments.get("confidence", 1.0), arguments.get("pinned", False), tuple(arguments.get("tags", ()))))
+        return service.add(AddRequest(arguments["request_id"], arguments["type"], arguments["scope"], arguments["content"], arguments.get("project"), arguments.get("importance", 0.5), arguments.get("confidence", 1.0), arguments.get("pinned", False), tuple(arguments.get("tags", ())), client))
     if name == "memory_search":
         return service.search(SearchQuery(arguments["query"], arguments.get("project"), arguments.get("status", "active"), arguments.get("scope"), arguments.get("type"), tuple(arguments.get("tags", ()))))
     if name == "memory_get":
@@ -55,7 +55,7 @@ def respond(value: dict) -> None:
     sys.stdout.flush()
 
 
-def main() -> None:
+def main(client: str = "unknown") -> None:
     service = service_from_env()
     for line in sys.stdin:
         request = None
@@ -67,7 +67,7 @@ def main() -> None:
             elif method == "tools/list":
                 response = {"jsonrpc": "2.0", "id": request.get("id"), "result": {"tools": [{"name": name, "inputSchema": {"type": "object"}} for name in TOOLS]}}
             elif method == "tools/call":
-                value = result(call(service, request["params"]["name"], request["params"].get("arguments", {})))
+                value = result(call(service, request["params"]["name"], request["params"].get("arguments", {}), client))
                 response = {"jsonrpc": "2.0", "id": request.get("id"), "result": {"content": [{"type": "text", "text": json.dumps(value, separators=(",", ":"))}]}}
             else:
                 raise MemoryError("method_not_found", f"unsupported method {method}")

@@ -183,7 +183,7 @@ class MarkdownStore:
                     return replay
                 raise MemoryError("idempotency_conflict", "request_id belongs to a different mutation")
             now = utc_now()
-            record = MemoryRecord(uuid7(), request.type, request.scope, request.project, request.content, request.importance, request.confidence, request.pinned, tuple(request.tags), "active", 1, content_hash(request.content), now, now)
+            record = MemoryRecord(uuid7(), request.type, request.scope, request.project, request.content, request.importance, request.confidence, request.pinned, tuple(request.tags), "active", 1, content_hash(request.content), now, now, request.source_client)
             self._write_note(record)
             self._journal("add", record, request.request_id, payload_hash, record)
             index.upsert(record)
@@ -205,7 +205,7 @@ class MarkdownStore:
                 self._write_conflict(current, request)
                 raise
             content = request.content if request.content is not None else current.content
-            record = MemoryRecord(current.id, current.type, current.scope, current.project, content, request.importance if request.importance is not None else current.importance, request.confidence if request.confidence is not None else current.confidence, request.pinned if request.pinned is not None else current.pinned, tuple(request.tags) if request.tags is not None else current.tags, request.status if request.status is not None else current.status, current.revision + 1, content_hash(content), current.created_at, utc_now())
+            record = MemoryRecord(current.id, current.type, current.scope, current.project, content, request.importance if request.importance is not None else current.importance, request.confidence if request.confidence is not None else current.confidence, request.pinned if request.pinned is not None else current.pinned, tuple(request.tags) if request.tags is not None else current.tags, request.status if request.status is not None else current.status, current.revision + 1, content_hash(content), current.created_at, utc_now(), current.source_client)
             self._write_note(record)
             self._journal("update", record, request.request_id, payload_hash, record)
             index.upsert(record)
