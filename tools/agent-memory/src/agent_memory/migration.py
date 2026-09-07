@@ -4,6 +4,9 @@ import hashlib
 import json
 import os
 import tempfile
+import fcntl
+from contextlib import contextmanager
+from functools import wraps
 from pathlib import Path
 from uuid import UUID
 
@@ -19,6 +22,14 @@ QUOTA_DEFERRAL = {
     "reported_reset": "2026-10-01T00:00:00+00:00",
     "next_action": "post-reset delta export",
 }
+
+
+def batch_locked(method):
+    @wraps(method)
+    def wrapped(self, batch, *args, **kwargs):
+        with self._locked(batch):
+            return method(self, batch, *args, **kwargs)
+    return wrapped
 
 
 class MigrationService:
@@ -40,6 +51,17 @@ class MigrationService:
             raise MemoryError("invalid_request", "batch must be a simple identifier")
         return self.home / "snapshots" / batch
 
+    @contextmanager
+    def _locked(self, batch: str):
+        lock_path = self._batch_dir(batch).with_suffix(".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
     def _manifest_path(self, batch: str) -> Path:
         return self._batch_dir(batch) / "manifest.json"
 
@@ -57,6 +79,7 @@ class MigrationService:
     def _hash(raw: bytes) -> str:
         return hashlib.sha256(raw).hexdigest()
 
+    @batch_locked
     def snapshot(self, batch: str) -> dict:
         directory = self._batch_dir(batch)
         manifest_path = self._manifest_path(batch)
@@ -137,6 +160,7 @@ class MigrationService:
             return hashlib.sha256(normalized.replace(" enabled", "").replace(" disabled", "").encode("utf-8")).hexdigest()
         return None
 
+    @batch_locked
     def disposition(self, batch: str, source_identity: str, action: str, reason: str,
                     decision: str, note_id: str | None = None) -> dict:
         """Append a user-approved exclusion or waiver without changing snapshots."""
@@ -162,6 +186,7 @@ class MigrationService:
         self._append(batch, row)
         return {"batch": batch, "source_identity": source_identity, "action": action, "reason": reason}
 
+    @batch_locked
     def import_local(self, batch: str, stop_after: int | None = None) -> dict:
         manifest = self._manifest(batch)
         latest = self._latest_local(batch)
@@ -238,6 +263,7 @@ class MigrationService:
                 scopes[row["source_identity"]] = row
         return scopes
 
+    @batch_locked
     def import_mem0(self, batch: str, pages: list[dict] | None = None,
                     quota_failure_after_page: int | None = None) -> dict:
         self._manifest(batch)
@@ -313,6 +339,7 @@ class MigrationService:
                 "waivers": sum(bool(row.get("waiver")) for row in latest.values()),
                 "manifest_hash": self._hash(self._manifest_path(batch).read_bytes())}
 
+    @batch_locked
     def report(self, batch: str) -> dict:
         summary = self._summary(batch)
         rows = self._rows(batch)
@@ -337,6 +364,7 @@ class MigrationService:
         destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return summary
 
+    @batch_locked
     def verify(self, batch: str) -> dict:
         summary = self._summary(batch)
         for entry in self._manifest(batch)["sources"]:

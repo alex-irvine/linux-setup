@@ -64,13 +64,56 @@ class MarkdownStore:
     def _path(self, memory_id: UUID) -> Path:
         filename = f"{memory_id}.md"
         candidates = [self.global_notes / filename, self.notes / filename, *self.projects.glob(f"*/{filename}")]
-        return next((path for path in candidates if path.exists()), self.global_notes / filename)
+        existing = [path for path in candidates if path.exists()]
+        if len(existing) < 2:
+            return existing[0] if existing else self.global_notes / filename
+        records = [(record_from_dict(frontmatter.load(path.read_text(encoding="utf-8"))), path) for path in existing]
+        # An interrupted move may briefly leave two files. Prefer the newest canonical location.
+        return max(records, key=lambda item: (item[0].revision, item[1] == self._path_for(item[0]), str(item[1])))[1]
 
     def get(self, memory_id: UUID) -> MemoryRecord:
         path = self._path(memory_id)
         if not path.exists():
             raise MemoryError("not_found", f"memory {memory_id} does not exist")
         return record_from_dict(frontmatter.load(path.read_text(encoding="utf-8")))
+
+    def relocate_legacy(self) -> dict:
+        """Move legacy notes using only JSON frontmatter; the body remains opaque bytes."""
+        moved = 0
+        with self._locked():
+            for path in sorted(self.notes.glob("*.md")):
+                raw = path.read_bytes()
+                if not raw.startswith(b"---\n"):
+                    raise MemoryError("invalid_frontmatter", "legacy note has invalid frontmatter")
+                header, delimiter, body = raw[4:].partition(b"\n---\n")
+                if not delimiter:
+                    raise MemoryError("invalid_frontmatter", "legacy note has invalid frontmatter")
+                values = {}
+                for line in header.decode("utf-8").splitlines():
+                    key, value = line.split(": ", 1)
+                    values[key] = json.loads(value)
+                values.setdefault("source_client", "unknown")
+                values.setdefault("source_session", "unknown")
+                values.setdefault("supersedes", [])
+                record = MemoryRecord(UUID(values["id"]), values["type"], values["scope"], values.get("project"), "", values["importance"], values["confidence"], values["pinned"], tuple(values["tags"]), values.get("status", "active"), values["revision"], values["content_hash"], values["created_at"], values["updated_at"], values["source_client"], values["source_session"], tuple(values["supersedes"]))
+                destination = self._path_for(record)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                rewritten = [b"---"]
+                for key in frontmatter.KEYS:
+                    rewritten.append(f"{key}: {json.dumps(values.get(key), ensure_ascii=False, separators=(',', ':'))}".encode("utf-8"))
+                payload = b"\n".join(rewritten) + b"\n---\n" + body
+                descriptor, temporary = tempfile.mkstemp(prefix=f".{record.id}.", dir=path.parent)
+                try:
+                    os.write(descriptor, payload)
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+                os.replace(temporary, path)
+                os.replace(path, destination)
+                self._fsync_dir(path.parent)
+                self._fsync_dir(destination.parent)
+                moved += 1
+        return {"moved": moved, "remaining": len(list(self.notes.glob("*.md")))}
 
     def _check_idempotency(self, index: MemoryIndex, request_id: str, payload_hash: str) -> MemoryRecord | DeleteResult | None:
         existing = index.idempotency(request_id)
@@ -118,30 +161,32 @@ class MarkdownStore:
                 values[entry["id"]] = entry["result"]
         return values
 
-    def _write_note(self, record: MemoryRecord) -> None:
+    def _fsync_dir(self, path: Path) -> None:
+        directory = os.open(path, os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+    def _write_note(self, record: MemoryRecord, existing: Path | None = None) -> None:
         destination = self._path_for(record)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(prefix=f".{record.id}.", dir=destination.parent)
+        existing = existing or self._path(record.id)
+        write_parent = existing.parent if existing.exists() else destination.parent
+        descriptor, temporary = tempfile.mkstemp(prefix=f".{record.id}.", dir=write_parent)
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as file:
                 file.write(frontmatter.dump(record))
                 file.flush()
                 os.fsync(file.fileno())
-            os.replace(temporary, destination)
-            directory = os.open(destination.parent, os.O_DIRECTORY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
-            # Scope/project changes move the note atomically after the replacement.
-            for prior in (self.global_notes / f"{record.id}.md", self.notes / f"{record.id}.md", *self.projects.glob(f"*/{record.id}.md")):
-                if prior != destination and prior.exists():
-                    prior.unlink()
-                    directory = os.open(prior.parent, os.O_DIRECTORY)
-                    try:
-                        os.fsync(directory)
-                    finally:
-                        os.close(directory)
+            # Rewrite at the old path first. A subsequent rename moves one inode, never two copies.
+            target = existing if existing.exists() else destination
+            os.replace(temporary, target)
+            self._fsync_dir(target.parent)
+            if target != destination:
+                os.replace(target, destination)
+                self._fsync_dir(target.parent)
+                self._fsync_dir(destination.parent)
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
@@ -235,7 +280,7 @@ class MarkdownStore:
                 raise
             content = request.content if request.content is not None else current.content
             record = MemoryRecord(current.id, current.type, current.scope, current.project, content, request.importance if request.importance is not None else current.importance, request.confidence if request.confidence is not None else current.confidence, request.pinned if request.pinned is not None else current.pinned, tuple(request.tags) if request.tags is not None else current.tags, request.status if request.status is not None else current.status, current.revision + 1, content_hash(content), current.created_at, utc_now(), current.source_client, current.source_session, current.supersedes)
-            self._write_note(record)
+            self._write_note(record, self._path(current.id))
             self._journal("update", record, request.request_id, payload_hash, record)
             index.upsert(record)
             index.remember_idempotency(request.request_id, payload_hash, record.to_dict())
@@ -261,7 +306,7 @@ class MarkdownStore:
                 raise
             record = replace(current, scope=request.scope, project=request.project if request.scope == "project" else None,
                              revision=current.revision + 1, updated_at=utc_now())
-            self._write_note(record)
+            self._write_note(record, self._path(current.id))
             self._journal("scope", record, request.request_id, payload_hash, record)
             index.upsert(record)
             index.remember_idempotency(request.request_id, payload_hash, record.to_dict())
@@ -296,12 +341,9 @@ class MarkdownStore:
                 raise MemoryError("idempotency_conflict", "request_id belongs to a different mutation")
             current = self.get(request.memory_id)
             self._assert_current(current, request.expected_revision, request.expected_content_hash)
-            self._path(current.id).unlink()
-            directory = os.open(self._path(current.id).parent, os.O_DIRECTORY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+            path = self._path(current.id)
+            path.unlink()
+            self._fsync_dir(path.parent)
             result = DeleteResult(current.id, current.revision, current.content_hash)
             self._journal("delete", current, request.request_id, payload_hash, result)
             index.remove(str(current.id))
@@ -456,14 +498,16 @@ class MemoryService:
         embedded = self.ollama.embed([query.query])
         if not isinstance(embedded, DegradedStatus):
             vectors = self.index.embeddings(candidates)
+            dimensions = len(embedded.vectors[0])
+            incompatible = [memory_id for memory_id, vector in vectors.items() if len(vector) != dimensions]
+            self.index.remove_embeddings(incompatible)
+            vectors = {memory_id: vector for memory_id, vector in vectors.items() if memory_id not in incompatible}
             missing = [record for record in candidates if str(record.id) not in vectors]
             if missing:
                 generated = self.ollama.embed([record.content for record in missing])
                 if not isinstance(generated, DegradedStatus):
                     self.index.remember_embeddings(missing, generated.vectors)
                     vectors.update({str(record.id): vector for record, vector in zip(missing, generated.vectors)})
-            dimensions = len(embedded.vectors[0])
-            vectors = {memory_id: vector for memory_id, vector in vectors.items() if len(vector) == dimensions}
             if vectors:
                 semantic_status = "available"
                 scored = sorted(((record, vectors[str(record.id)]) for record in candidates if str(record.id) in vectors), key=lambda item: (-cosine(embedded.vectors[0], item[1]), str(item[0].id)))

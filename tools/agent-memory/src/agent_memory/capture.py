@@ -13,6 +13,7 @@ from pathlib import Path
 from .git_sync import GitSync, VAULT_RELPATH
 from .model import AddRequest, ListQuery, MEMORY_SCOPES, MEMORY_TYPES, UpdateRequest, normalize_content, utc_now
 from .ollama import DegradedStatus
+from .rank import cosine
 
 
 def unsafe_reason(content: str) -> str | None:
@@ -180,6 +181,11 @@ class Worker:
             report["rejected_by_reason"].append("low_confidence"); return
         records = self.service.list(ListQuery(status="active"))
         if any(normalize_content(record.content) == normalize_content(content) for record in records): report["rejected_by_reason"].append("duplicate"); return
+        embedded = self.service.ollama.embed([content, *[record.content for record in records]])
+        if isinstance(embedded, DegradedStatus) or len(embedded.vectors) != len(records) + 1 or not embedded.vectors or any(len(vector) != len(embedded.vectors[0]) for vector in embedded.vectors):
+            raise RuntimeError("capture embedding unavailable")
+        if any(cosine(embedded.vectors[0], vector) >= 0.97 for vector in embedded.vectors[1:]):
+            report["rejected_by_reason"].append("semantic_duplicate"); return
         mapping = self.home / "capture-ids.json"
         with self.outbox.locked():
             capture_ids = json.loads(mapping.read_text(encoding="utf-8")) if mapping.exists() else {}

@@ -46,7 +46,7 @@ def parser() -> argparse.ArgumentParser:
     add.add_argument("--supersedes", action="append", default=[])
     add.add_argument("--json-input")
     for name in ("get", "list", "search", "update", "delete", "status", "pin", "scope",
-                  "feedback", "rebuild", "reconcile", "maintain", "delete-all", "purge", "enqueue", "worker"):
+                   "feedback", "rebuild", "reconcile", "maintain", "delete-all", "purge", "enqueue", "worker", "relocate-legacy"):
         commands.add_parser(name)
     commands.add_parser("mcp").add_argument("--client", required=True, choices=("claude", "opencode", "hermes", "pi"))
     commands.choices["get"].add_argument("--id", required=True)
@@ -171,6 +171,8 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
         return service.feedback(FeedbackRequest(UUID(args.id), args.request_id, args.rating))
     if args.command == "rebuild":
         return service.rebuild()
+    if args.command == "relocate-legacy":
+        return service.store.relocate_legacy()
     if args.command == "reconcile":
         return service.reconcile()
     if args.command == "maintain":

@@ -119,6 +119,12 @@ class MemoryIndex:
                 continue
         return values
 
+    def remove_embeddings(self, memory_ids: list[str]) -> None:
+        if not memory_ids:
+            return
+        with self._connect() as connection:
+            connection.execute("DELETE FROM embeddings WHERE id IN (%s)" % ",".join("?" * len(memory_ids)), memory_ids)
+
     def exclude_path(self, path: Path, reason: str = "invalid memory frontmatter") -> None:
         with self._connect() as connection:
             connection.execute("INSERT OR REPLACE INTO excluded_paths VALUES (?, ?)", (str(path), reason))
