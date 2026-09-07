@@ -1,0 +1,1 @@
+"""Canonical local memory service."""
