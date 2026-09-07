@@ -168,3 +168,75 @@ def test_cli_uses_canonical_default_paths(tmp_path, run_cli):
     assert superseded["status"] == "superseded"
     with sqlite3.connect(home / ".local" / "share" / "agent-memory" / "memory.sqlite3") as catalog:
         assert catalog.execute("SELECT status FROM memories").fetchone() == ("superseded",)
+
+
+def test_cli_upgrades_legacy_task_one_storage(tmp_path, run_cli):
+    env = {"AGENT_MEMORY_HOME": str(tmp_path / "state"),
+           "AGENT_MEMORY_VAULT": str(tmp_path / "vault")}
+    legacy_id = "018f6f0e-7f52-7dc9-a1f7-2f2872fa9c4a"
+    notes = tmp_path / "vault" / "notes"
+    notes.mkdir(parents=True)
+    (notes / f"{legacy_id}.md").write_text(f'''---
+id: "{legacy_id}"
+type: "decision"
+scope: "project"
+project: "dotfiles"
+importance: 0.8
+confidence: 0.95
+pinned: false
+tags: ["legacy"]
+revision: 1
+content_hash: "legacy-hash"
+created_at: "2026-09-07T12:00:00Z"
+updated_at: "2026-09-07T12:00:00Z"
+---
+
+Legacy Task 1 note.
+''', encoding="utf-8")
+    state = tmp_path / "state"
+    state.mkdir()
+    with sqlite3.connect(state / "memory.sqlite3") as catalog:
+        catalog.executescript("""
+            CREATE TABLE memories (
+                id TEXT PRIMARY KEY, type TEXT NOT NULL, scope TEXT NOT NULL,
+                project TEXT, content TEXT NOT NULL, importance REAL NOT NULL,
+                confidence REAL NOT NULL, pinned INTEGER NOT NULL, tags TEXT NOT NULL,
+                revision INTEGER NOT NULL, content_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            );
+            CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, content);
+            CREATE TABLE idempotency (
+                request_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, result_id TEXT NOT NULL
+            );
+        """)
+        catalog.execute("INSERT INTO memories VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (legacy_id, "decision", "project", "dotfiles", "Legacy Task 1 note.",
+                         0.8, 0.95, 0, "legacy", 1, "legacy-hash",
+                         "2026-09-07T12:00:00Z", "2026-09-07T12:00:00Z"))
+        catalog.execute("INSERT INTO memories_fts VALUES (?, ?)", (legacy_id, "Legacy Task 1 note."))
+        catalog.execute("INSERT INTO idempotency VALUES (?, ?, ?)",
+                        ("legacy-request", "legacy-payload", legacy_id))
+
+    listed = run_cli(env, "list", "--project", "dotfiles")["result"]["memories"]
+    assert listed == [{
+        "id": legacy_id, "type": "decision", "scope": "project", "project": "dotfiles",
+        "content": "Legacy Task 1 note.", "importance": 0.8, "confidence": 0.95,
+        "pinned": False, "tags": ["legacy"], "status": "active", "revision": 1,
+        "content_hash": "legacy-hash", "created_at": "2026-09-07T12:00:00Z",
+        "updated_at": "2026-09-07T12:00:00Z",
+    }]
+    legacy = run_cli(env, "get", "--id", legacy_id)["result"]
+    upgraded = run_cli(
+        env, "update", "--id", legacy_id, "--expected-revision", "1",
+        "--expected-content-hash", legacy["content_hash"], "--request-id", "upgrade-legacy",
+        "--status", "superseded",
+    )["result"]
+    assert upgraded["status"] == "superseded"
+    assert 'status: "superseded"' in (notes / f"{legacy_id}.md").read_text(encoding="utf-8")
+    with sqlite3.connect(state / "memory.sqlite3") as catalog:
+        assert {column[1] for column in catalog.execute("PRAGMA table_info(memories)")} >= {"status"}
+        assert {column[1] for column in catalog.execute("PRAGMA table_info(idempotency)")} >= {"result_json"}
+        replay = json.loads(catalog.execute(
+            "SELECT result_json FROM idempotency WHERE request_id = 'legacy-request'").fetchone()[0])
+    assert replay["id"] == legacy_id
+    assert replay["status"] == "active"

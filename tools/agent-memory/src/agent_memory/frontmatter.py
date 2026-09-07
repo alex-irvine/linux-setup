@@ -26,5 +26,6 @@ def load(text: str) -> dict:
     for line in header.splitlines():
         key, value = line.split(": ", 1)
         values[key] = json.loads(value)
+    values.setdefault("status", "active")
     values["content"] = normalize_content(body)
     return values

@@ -8,6 +8,9 @@ from pathlib import Path
 from .model import ListQuery, MemoryRecord, SearchQuery, SearchResult
 
 
+RECORD_COLUMNS = "id, type, scope, project, content, importance, confidence, pinned, tags, status, revision, content_hash, created_at, updated_at"
+
+
 class MemoryIndex:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -26,6 +29,24 @@ class MemoryIndex:
                     request_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, result_json TEXT NOT NULL
                 );
             """)
+            self._migrate(connection)
+
+    def _migrate(self, connection: sqlite3.Connection) -> None:
+        memory_columns = {row[1] for row in connection.execute("PRAGMA table_info(memories)")}
+        if "status" not in memory_columns:
+            connection.execute("ALTER TABLE memories ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+        idempotency_columns = {row[1] for row in connection.execute("PRAGMA table_info(idempotency)")}
+        if "result_id" in idempotency_columns:
+            connection.execute("ALTER TABLE idempotency RENAME TO legacy_idempotency")
+            connection.execute("""CREATE TABLE idempotency (
+                request_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, result_json TEXT NOT NULL
+            )""")
+            for request_id, payload_hash, result_id in connection.execute("SELECT request_id, payload_hash, result_id FROM legacy_idempotency"):
+                row = connection.execute(f"SELECT {RECORD_COLUMNS} FROM memories WHERE id = ?", (result_id,)).fetchone()
+                if row is not None:
+                    result = self._record(row).to_dict()
+                    connection.execute("INSERT INTO idempotency VALUES (?, ?, ?)", (request_id, payload_hash, json.dumps(result, sort_keys=True, separators=(",", ":"))))
+            connection.execute("DROP TABLE legacy_idempotency")
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)
@@ -35,9 +56,12 @@ class MemoryIndex:
         values["tags"] = ",".join(record.tags)
         values["pinned"] = int(record.pinned)
         with self._connect() as connection:
-            connection.execute("""INSERT OR REPLACE INTO memories VALUES
-                (:id, :type, :scope, :project, :content, :importance, :confidence, :pinned,
-                 :tags, :status, :revision, :content_hash, :created_at, :updated_at)""", values)
+            connection.execute("""INSERT OR REPLACE INTO memories
+                (id, type, scope, project, content, importance, confidence, pinned, tags,
+                 status, revision, content_hash, created_at, updated_at)
+                VALUES (:id, :type, :scope, :project, :content, :importance, :confidence,
+                        :pinned, :tags, :status, :revision, :content_hash, :created_at,
+                        :updated_at)""", values)
             connection.execute("DELETE FROM memories_fts WHERE id = ?", (values["id"],))
             connection.execute("INSERT INTO memories_fts (id, content) VALUES (?, ?)", (values["id"], values["content"]))
 
@@ -48,11 +72,11 @@ class MemoryIndex:
 
     def idempotency(self, request_id: str) -> tuple[str, str] | None:
         with self._connect() as connection:
-            return connection.execute("SELECT payload_hash, result_json FROM idempotency WHERE request_id = ?", (request_id,)).fetchone()
+            return connection.execute("SELECT payload_hash, result_json FROM idempotency WHERE request_id = ? AND result_json IS NOT NULL", (request_id,)).fetchone()
 
     def remember_idempotency(self, request_id: str, payload_hash: str, result: dict) -> None:
         with self._connect() as connection:
-            connection.execute("INSERT INTO idempotency VALUES (?, ?, ?)", (request_id, payload_hash, json.dumps(result, sort_keys=True, separators=(",", ":"))))
+            connection.execute("INSERT INTO idempotency (request_id, payload_hash, result_json) VALUES (?, ?, ?)", (request_id, payload_hash, json.dumps(result, sort_keys=True, separators=(",", ":"))))
 
     def list(self, query: ListQuery) -> list[MemoryRecord]:
         clauses, values = [], []
@@ -63,14 +87,14 @@ class MemoryIndex:
                 values.append(value)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         with self._connect() as connection:
-            rows = connection.execute("SELECT * FROM memories" + where + " ORDER BY created_at, id", values).fetchall()
+            rows = connection.execute(f"SELECT {RECORD_COLUMNS} FROM memories" + where + " ORDER BY created_at, id", values).fetchall()
         return [self._record(row) for row in rows]
 
     def search_lexical(self, query: SearchQuery) -> SearchResult:
         terms = re.findall(r"[\w]+", query.query, flags=re.UNICODE)
         if not terms:
             return SearchResult([])
-        sql = "SELECT m.* FROM memories_fts f JOIN memories m ON m.id = f.id WHERE memories_fts MATCH ?"
+        sql = f"SELECT {','.join(f'm.{column.strip()}' for column in RECORD_COLUMNS.split(','))} FROM memories_fts f JOIN memories m ON m.id = f.id WHERE memories_fts MATCH ?"
         values = [" AND ".join(f'"{term}"' for term in terms)]
         if query.project is not None:
             sql += " AND m.project = ?"
