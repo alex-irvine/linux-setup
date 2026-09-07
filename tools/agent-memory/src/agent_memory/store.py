@@ -234,10 +234,29 @@ class MarkdownStore:
 
     def _write_conflict(self, current: MemoryRecord, request: UpdateRequest | ScopeRequest) -> None:
         self.conflicts.mkdir(parents=True, exist_ok=True)
-        content = request.content if isinstance(request, UpdateRequest) and request.content is not None else current.content
-        candidate = replace(current, content=content, revision=current.revision + 1,
-                            content_hash=content_hash(content), updated_at=utc_now())
-        (self.conflicts / f"{current.id}.{request.request_id}.md").write_text(frontmatter.dump(candidate), encoding="utf-8")
+        preimage = self._journal_preimage(current.id, request.expected_revision, request.expected_content_hash)
+        if preimage is None:
+            return
+        if isinstance(request, UpdateRequest):
+            content = request.content if request.content is not None else preimage.content
+            candidate = replace(preimage, content=content, content_hash=content_hash(content))
+        else:
+            candidate = replace(preimage, scope=request.scope,
+                                project=request.project if request.scope == "project" else None)
+        prefix = self.conflicts / f"{current.id}.{request.request_id}"
+        Path(f"{prefix}.preimage.md").write_text(frontmatter.dump(preimage), encoding="utf-8")
+        Path(f"{prefix}.candidate.md").write_text(frontmatter.dump(candidate), encoding="utf-8")
+
+    def _journal_preimage(self, memory_id: UUID, revision: int, digest: str) -> MemoryRecord | None:
+        if not self.journal_path.exists():
+            return None
+        for line in reversed(self.journal_path.read_text(encoding="utf-8").splitlines()):
+            entry = json.loads(line)
+            if entry.get("id") == str(memory_id) and entry.get("revision") == revision and entry.get("content_hash") == digest:
+                result = entry.get("result", {})
+                if result.get("status") != "deleted":
+                    return record_from_dict(result)
+        return None
 
     def _authorizations(self) -> dict:
         return json.loads(self.authorizations_path.read_text(encoding="utf-8")) if self.authorizations_path.exists() else {}
@@ -259,17 +278,31 @@ class MarkdownStore:
         if entry is None or entry["action"] != action or entry["expires_at"] < time.time():
             raise MemoryError("invalid_authorization", "authorization token is invalid or expired")
 
-    def _audit(self, action: str, affected_ids: list[str]) -> str:
-        audit_id = str(uuid7())
+    def _audit(self, audit_id: str, action: str, affected_ids: list[str], request_id: str, payload_hash: str, result: dict) -> None:
         with self.audit_path.open("a", encoding="utf-8") as audit:
-            audit.write(json.dumps({"id": audit_id, "action": action, "affected_ids": affected_ids, "at": utc_now()}, sort_keys=True) + "\n")
+            audit.write(json.dumps({"id": audit_id, "action": action, "affected_ids": affected_ids,
+                                    "request_id": request_id, "payload_hash": payload_hash,
+                                    "result": result, "at": utc_now()}, sort_keys=True) + "\n")
             audit.flush()
             os.fsync(audit.fileno())
-        return audit_id
+
+    def _audit_result(self, request_id: str, payload_hash: str) -> dict | None:
+        if not self.audit_path.exists():
+            return None
+        for line in reversed(self.audit_path.read_text(encoding="utf-8").splitlines()):
+            entry = json.loads(line)
+            if entry.get("request_id") == request_id:
+                if entry.get("payload_hash") != payload_hash:
+                    raise MemoryError("idempotency_conflict", "request_id was reused with a different payload")
+                return entry["result"]
+        return None
 
     def delete_all(self, request_id: str, token: str, index: MemoryIndex) -> dict:
         payload_hash = request_hash("delete-all", {"request_id": request_id, "token": token})
         with self._locked():
+            replay = self._audit_result(request_id, payload_hash)
+            if replay is not None:
+                return replay
             existing = index.admin_operation(request_id)
             if existing is not None:
                 if existing[0] != payload_hash:
@@ -282,30 +315,36 @@ class MarkdownStore:
                 if path.exists():
                     path.unlink()
             index.clear()
-            result = {"affected_ids": affected, "count": len(affected), "audit_record_id": self._audit("delete-all", affected)}
+            result = {"affected_ids": affected, "count": len(affected)}
+            result["audit_record_id"] = str(uuid7())
+            self._audit(result["audit_record_id"], "delete-all", affected, request_id, payload_hash, result)
             index.remember_admin_operation(request_id, payload_hash, result)
             return result
 
     def purge(self, request_id: str, token: str, memory_id: UUID, digest: str, index: MemoryIndex) -> dict:
         payload_hash = request_hash("purge", {"request_id": request_id, "token": token, "memory_id": str(memory_id), "content_hash": digest})
         with self._locked():
+            replay = self._audit_result(request_id, payload_hash)
+            if replay is not None:
+                return replay
             existing = index.admin_operation(request_id)
             if existing is not None:
                 if existing[0] != payload_hash:
                     raise MemoryError("idempotency_conflict", "request_id was reused with a different payload")
                 return json.loads(existing[1])
-            self._consume_token(token, "purge")
-            path = self._path(memory_id)
-            if path.exists() and self.get(memory_id).content_hash != digest:
+            current = self.get(memory_id)
+            if current.content_hash != digest:
                 raise MemoryError("revision_conflict", "memory content hash no longer matches")
-            if path.exists():
-                path.unlink()
+            self._consume_token(token, "purge")
+            self._path(memory_id).unlink()
             index.remove(str(memory_id))
             if self.journal_path.exists():
                 entries = [line for line in self.journal_path.read_text(encoding="utf-8").splitlines() if json.loads(line).get("id") != str(memory_id)]
                 self.journal_path.write_text("\n".join(entries) + ("\n" if entries else ""), encoding="utf-8")
             affected = [str(memory_id)]
-            result = {"affected_ids": affected, "count": 1, "audit_record_id": self._audit("purge", affected)}
+            result = {"affected_ids": affected, "count": 1}
+            result["audit_record_id"] = str(uuid7())
+            self._audit(result["audit_record_id"], "purge", affected, request_id, payload_hash, result)
             index.remember_admin_operation(request_id, payload_hash, result)
             return result
 
@@ -392,6 +431,7 @@ class MemoryService:
                 invalid.append(InvalidNote(str(path), error or "invalid memory frontmatter"))
                 excluded.append(str(path))
                 self.index.exclude_path(path, error or "invalid memory frontmatter")
+                self.index.remove(path.stem)
             elif record.content_hash != content_hash(record.content):
                 computed = record.with_computed_hash()
                 edits.append(str(record.id))
