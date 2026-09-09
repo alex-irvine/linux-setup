@@ -18,6 +18,7 @@ def ollama(responses):
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             if self.path == "/api/embed":
+                assert body["model"] == "fixture-embed"
                 payload = {"embeddings": responses["embed"](body["input"])}
             else:
                 assert body["model"] == "fixture-review"
@@ -54,7 +55,7 @@ def worker(tmp_path, url, prior_content="Existing public fact."):
     home, vault = tmp_path / "state", tmp_path / "vault"
     service = MemoryService(MarkdownStore(vault, home), MemoryIndex(home / "index.sqlite3"))
     prior = service.add(AddRequest("prior", "fact", "global", prior_content))
-    service.ollama = OllamaClient(url, review_model="fixture-review")
+    service.ollama = OllamaClient(url, review_model="fixture-review", embed_model="fixture-embed")
     return service, prior, Outbox(home), Worker(service, home)
 
 

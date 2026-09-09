@@ -10,7 +10,8 @@ import pytest
 
 @pytest.fixture
 def memory_app(tmp_path):
-    env = {"AGENT_MEMORY_HOME": str(tmp_path / "state"), "AGENT_MEMORY_VAULT": str(tmp_path / "vault")}
+    env = {"AGENT_MEMORY_HOME": str(tmp_path / "state"), "AGENT_MEMORY_VAULT": str(tmp_path / "vault"),
+           "OLLAMA_URL": "http://127.0.0.1:1", "OLLAMA_TIMEOUT": "0.01"}
 
     def run(*args, check=True):
         completed = subprocess.run([sys.executable, "-m", "agent_memory.cli", *args], env={**os.environ, **env},

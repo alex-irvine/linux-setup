@@ -20,13 +20,15 @@ class DegradedStatus:
 
 class OllamaClient:
     def __init__(self, url: str | None = None, timeout: float | None = None,
-                 review_model: str | None = None) -> None:
+                 review_model: str | None = None, embed_model: str | None = None) -> None:
         self.url = (url or os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")).rstrip("/")
         self.timeout = timeout if timeout is not None else float(os.environ.get("OLLAMA_TIMEOUT", "60"))
         self.review_model = review_model or os.environ.get("OLLAMA_REVIEW_MODEL", "qwen3:1.7b")
+        self.embed_model = embed_model or os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
     def embed(self, texts: Sequence[str]) -> EmbeddingBatch | DegradedStatus:
-        request = Request(f"{self.url}/api/embed", data=json.dumps({"input": list(texts)}).encode(),
+        request = Request(f"{self.url}/api/embed", data=json.dumps({"model": self.embed_model,
+                          "input": list(texts)}).encode(),
                           headers={"Content-Type": "application/json"}, method="POST")
         try:
             with urlopen(request, timeout=self.timeout) as response:

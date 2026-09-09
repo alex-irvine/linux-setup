@@ -15,7 +15,8 @@ def run(env, *args, input=None, check=True):
 
 
 def test_capture_rejects_raw_events_when_the_local_reviewer_is_unavailable(tmp_path):
-    env = {"AGENT_MEMORY_HOME": str(tmp_path / "state"), "AGENT_MEMORY_VAULT": str(tmp_path / "vault")}
+    env = {"AGENT_MEMORY_HOME": str(tmp_path / "state"), "AGENT_MEMORY_VAULT": str(tmp_path / "vault"),
+           "OLLAMA_URL": "http://127.0.0.1:1", "OLLAMA_TIMEOUT": "0.01"}
     candidates = [{"id": "completed", "client": "claude", "version": 1, "event": "completed_work", "source_session": "synthetic", "project": "fixture", "evidence": {"assistant": "Public completed work."}}]
     for candidate in candidates:
         run(env, "enqueue", "--kind", "capture", "--json-input", "-", input=json.dumps(candidate))
