@@ -6,6 +6,7 @@ DOTFILES="${DOTFILES:-$HOME/dotfiles}"
 AGENT_MEMORY_HOME="${AGENT_MEMORY_HOME:-$HOME/.local/share/agent-memory}"
 AGENT_MEMORY_VAULT="${AGENT_MEMORY_VAULT:-$HOME/.agents/memory}"
 OLLAMA_EMBED_MODEL="${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
+OLLAMA_REVIEW_MODEL="${OLLAMA_REVIEW_MODEL:-qwen3:1.7b}"
 PROJECT="${AGENT_MEMORY_PROJECT:-$ROOT/tools/agent-memory}"
 MEMORYCTL="$PROJECT/.venv/bin/memoryctl"
 
@@ -38,13 +39,16 @@ fi
 test -d "$AGENT_MEMORY_VAULT" || die "memory vault is unavailable at $AGENT_MEMORY_VAULT"
 
 ollama_models="$(ollama list)" || die "failed to inspect installed Ollama models"
-if ! awk -v model="$OLLAMA_EMBED_MODEL" '
-  function normalize(name) { sub(/:latest$/, "", name); return name }
-  normalize($1) == normalize(model) { found = 1 }
-  END { exit !found }
-' <<<"$ollama_models"; then
-  ollama pull "$OLLAMA_EMBED_MODEL" || die "failed to pull Ollama embedding model: $OLLAMA_EMBED_MODEL"
-fi
+for model in "$OLLAMA_EMBED_MODEL" "$OLLAMA_REVIEW_MODEL"; do
+  if ! awk -v model="$model" '
+    function normalize(name) { sub(/:latest$/, "", name); return name }
+    normalize($1) == normalize(model) { found = 1 }
+    END { exit !found }
+  ' <<<"$ollama_models"; then
+    ollama pull "$model" || die "failed to pull required Ollama model: $model"
+    ollama_models+=$'\n'"$model"
+  fi
+done
 
 AGENT_MEMORY_HOME="$AGENT_MEMORY_HOME" AGENT_MEMORY_VAULT="$AGENT_MEMORY_VAULT" \
   "$HOME/.local/bin/memoryctl" rebuild || die "memoryctl rebuild failed; inspect $AGENT_MEMORY_VAULT and $AGENT_MEMORY_HOME"

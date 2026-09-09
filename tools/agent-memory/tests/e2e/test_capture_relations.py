@@ -20,6 +20,7 @@ def ollama(responses):
             if self.path == "/api/embed":
                 payload = {"embeddings": responses["embed"](body["input"])}
             else:
+                assert body["model"] == "fixture-review"
                 prompt = body["prompt"]
                 response = responses["relation"] if '"relation"' in prompt else responses["capture"]
                 payload = {"response": response}
@@ -53,7 +54,7 @@ def worker(tmp_path, url, prior_content="Existing public fact."):
     home, vault = tmp_path / "state", tmp_path / "vault"
     service = MemoryService(MarkdownStore(vault, home), MemoryIndex(home / "index.sqlite3"))
     prior = service.add(AddRequest("prior", "fact", "global", prior_content))
-    service.ollama = OllamaClient(url)
+    service.ollama = OllamaClient(url, review_model="fixture-review")
     return service, prior, Outbox(home), Worker(service, home)
 
 

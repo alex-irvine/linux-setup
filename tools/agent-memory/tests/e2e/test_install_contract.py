@@ -17,6 +17,7 @@ def test_clean_home_install_is_idempotent_and_does_not_require_mem0(tmp_path):
     state = home / "runtime/state"
     vault = home / "runtime/vault"
     model = "test-embed"
+    review_model = "test-review"
     bin_dir = tmp_path / "bin"
     calls = tmp_path / "calls"
     bin_dir.mkdir()
@@ -36,10 +37,10 @@ cp "{bin_dir}/memoryctl-stub" "$4/.venv/bin/memoryctl"
 set -euo pipefail
 printf 'ollama %s\\n' "$*" >> {calls!s}
 if [[ "$1" == list ]]; then
-  [[ -f {tmp_path!s}/model-pulled ]] && printf '%s:latest latest\\n' "$OLLAMA_EMBED_MODEL"
+  [[ -f {tmp_path!s}/models-pulled ]] && cat {tmp_path!s}/models-pulled
   true
 elif [[ "$1" == pull ]]; then
-  touch {tmp_path!s}/model-pulled
+  printf '%s:latest latest\\n' "$2" >> {tmp_path!s}/models-pulled
 else
   exit 1
 fi
@@ -74,6 +75,7 @@ printf 'systemctl %s\\n' "$*" >> {calls!s}
         "AGENT_MEMORY_HOME": str(state),
         "AGENT_MEMORY_VAULT": str(vault),
         "OLLAMA_EMBED_MODEL": model,
+        "OLLAMA_REVIEW_MODEL": review_model,
     }
     setup = root / "agent-memory-setup.sh"
     first = subprocess.run([setup], env=env, text=True, capture_output=True)
@@ -93,6 +95,7 @@ printf 'systemctl %s\\n' "$*" >> {calls!s}
     assert recorded.count("uv sync --locked --project") == 2
     assert recorded.count("ollama list") == 2
     assert recorded.count("ollama pull test-embed") == 1
+    assert recorded.count("ollama pull test-review") == 1
     assert recorded.count("systemctl --user daemon-reload") == 2
     assert recorded.count("systemctl --user enable --now agent-memory-worker.timer") == 2
     assert "MEM0_API_KEY" not in "\n".join(
