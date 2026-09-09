@@ -2,8 +2,10 @@ import hashlib
 import json
 import multiprocessing
 from pathlib import Path
+from uuid import UUID
 
 from agent_memory.migration import MigrationService
+from agent_memory.model import MemoryError
 from agent_memory.store import MarkdownStore, MemoryService
 from agent_memory.index import MemoryIndex
 
@@ -46,11 +48,23 @@ def test_migration_is_resumable_and_accounts_for_every_source(tmp_path):
         {"app_id": "app-two", "cursor": "cursor-two", "records": [{"id": "two", "memory": "Later hosted fact"}]},
     ]
     hosted = migration.import_mem0(batch, pages=pages, quota_failure_after_page=1)
-    assert hosted["deferred"]["next_action"] == "post-reset delta export"
+    assert hosted["deferred"]["next_action"] == "manual platform export or support-assisted raw export"
     assert hosted["resume_cursor"] == "cursor-one"
     resumed_hosted = migration.import_mem0(batch, pages=pages)
     assert resumed_hosted["imported"] == 1
+    assert resumed_hosted["deferred"]["reason"] == "quota_exhausted"
     assert resumed_hosted["resume_cursor"] == "cursor-two"
+    rows_before_mismatch = len(migration._rows(batch))
+    try:
+        migration.import_mem0(batch, pages=pages, complete_counts={"app-one": 1, "app-two": 2})
+    except MemoryError as error:
+        assert error.code == "verification_failed"
+    else:
+        raise AssertionError("mismatched multi-scope completion was accepted")
+    assert len(migration._rows(batch)) == rows_before_mismatch
+    assert not any(row.get("completion") for row in migration._rows(batch))
+    completed_hosted = migration.import_mem0(batch, pages=pages, complete_counts={"app-two": 1})
+    assert completed_hosted["deferred"] is None
     rows_before_rerun = len(migration._rows(batch))
     assert migration.import_mem0(batch, pages=pages)["imported"] == 0
     assert len(migration._rows(batch)) == rows_before_rerun
@@ -102,3 +116,97 @@ def test_migration_same_batch_processes_serialize_without_duplicate_imports(tmp_
     assert all(len(row["imported_ids"]) == 1 for row in rows)
     assert migration.verify("concurrent")["verified"] is True
     assert migration.report("concurrent")["unaccounted_sources"] == 0
+
+
+def test_hosted_deferral_requires_matching_explicit_complete_count(tmp_path):
+    project_map = tmp_path / "project_map.json"
+    project_map.write_text(json.dumps({"/project": "app-two"}), encoding="utf-8")
+    archive, hermes, claude = tmp_path / "archive", tmp_path / "hermes", tmp_path / "claude"
+    archive.mkdir(); hermes.mkdir(); claude.mkdir()
+    service = MemoryService(MarkdownStore(tmp_path / "vault", tmp_path / "state"),
+                            MemoryIndex(tmp_path / "state" / "memory.sqlite3"))
+    migration = MigrationService(service, tmp_path / "state", archive, hermes, claude, project_map)
+    migration.snapshot("manual")
+    migration.import_mem0("manual")
+    page = {"app_id": "app-two", "cursor": "manual-export", "records": [
+        {"id": "one", "memory": "Synthetic hosted fact"},
+    ]}
+
+    rows_before_mismatch = len(migration._rows("manual"))
+    try:
+        migration.import_mem0("manual", pages=[page], complete_counts={"app-two": 2})
+    except MemoryError as error:
+        assert error.code == "verification_failed"
+    else:
+        raise AssertionError("mismatched hosted export count was accepted")
+    assert len(migration._rows("manual")) == rows_before_mismatch
+    assert not (tmp_path / "state" / "snapshots" / "manual" / "hosted").exists()
+    imported = migration.import_mem0("manual", pages=[page])
+    assert imported["deferred"]["reason"] == "quota_exhausted"
+    assert migration.report("manual")["deferred_hosted_scopes"] == ["alex/app-two"]
+    assert migration.import_mem0("manual", pages=[page], complete_counts={"app-two": 1})["deferred"] is None
+    assert migration.report("manual")["deferred_hosted_scopes"] == []
+
+
+def test_empty_hosted_import_accounts_for_every_mapped_app_and_corrects_legacy_fixture(tmp_path):
+    project_map = tmp_path / "project_map.json"
+    project_map.write_text(json.dumps({"/one": "real-one", "/two": "real-two"}), encoding="utf-8")
+    archive, hermes, claude = tmp_path / "archive", tmp_path / "hermes", tmp_path / "claude"
+    archive.mkdir(); hermes.mkdir(); claude.mkdir()
+    service = MemoryService(MarkdownStore(tmp_path / "vault", tmp_path / "state"),
+                            MemoryIndex(tmp_path / "state" / "memory.sqlite3"))
+    migration = MigrationService(service, tmp_path / "state", archive, hermes, claude, project_map)
+    migration.snapshot("inventory")
+    legacy_entry = {"source_kind": "hosted", "source_identity": "alex/app-two",
+                    "source_hash": None, "raw_snapshot": None}
+    migration._append("inventory", migration._row(legacy_entry, hosted_scope=True, deferred={"reason": "quota_exhausted"}))
+
+    result = migration.import_mem0("inventory")
+    assert result["deferred_scopes"] == ["alex/real-one", "alex/real-two"]
+    summary = migration.report("inventory")
+    assert summary["deferred_hosted_scopes"] == ["alex/real-one", "alex/real-two"]
+    latest = migration._hosted_scope_latest(migration._rows("inventory"))
+    assert latest["alex/app-two"]["correction"] == "invalid synthetic fixture scope"
+
+
+def test_hosted_completion_can_account_for_user_approved_missing_records(tmp_path):
+    project_map = tmp_path / "project_map.json"
+    project_map.write_text(json.dumps({"/project": "real-app"}), encoding="utf-8")
+    archive, hermes, claude = tmp_path / "archive", tmp_path / "hermes", tmp_path / "claude"
+    archive.mkdir(); hermes.mkdir(); claude.mkdir()
+    service = MemoryService(MarkdownStore(tmp_path / "vault", tmp_path / "state"),
+                            MemoryIndex(tmp_path / "state" / "memory.sqlite3"))
+    migration = MigrationService(service, tmp_path / "state", archive, hermes, claude, project_map)
+    migration.snapshot("waiver")
+    migration.import_mem0("waiver")
+    page = {"app_id": "real-app", "cursor": "saved-page", "records": [
+        {"id": "one", "memory": "Synthetic hosted fact"},
+    ]}
+
+    result = migration.import_mem0("waiver", pages=[page], complete_counts={"real-app": 2},
+                                   waived_missing={"real-app": 1})
+    assert result["deferred"] is None
+    scope = migration._hosted_scope_latest(migration._rows("waiver"))["alex/real-app"]
+    assert scope["completion"] == {"expected_count": 2, "verified_count": 1, "waived_missing": 1}
+    assert scope["waiver"] == {"status": "waived", "reason": "missing_hosted_records",
+                               "decision": "user_approved"}
+
+
+def test_structured_hosted_export_is_labeled_as_transformed(tmp_path):
+    project_map = tmp_path / "project_map.json"
+    project_map.write_text(json.dumps({"/project": "real-app"}), encoding="utf-8")
+    archive, hermes, claude = tmp_path / "archive", tmp_path / "hermes", tmp_path / "claude"
+    archive.mkdir(); hermes.mkdir(); claude.mkdir()
+    service = MemoryService(MarkdownStore(tmp_path / "vault", tmp_path / "state"),
+                            MemoryIndex(tmp_path / "state" / "memory.sqlite3"))
+    migration = MigrationService(service, tmp_path / "state", archive, hermes, claude, project_map)
+    migration.snapshot("transformed")
+    page = {"app_id": "real-app", "cursor": "structured-export", "records": [
+        {"id": "export-0", "memory": "Synthetic transformed fact", "_transformed": True},
+    ]}
+
+    migration.import_mem0("transformed", pages=[page], complete_counts={"real-app": 1})
+    row = next(row for row in migration._rows("transformed") if row.get("imported_ids"))
+    assert row["transformed"] is True
+    record = service.get(UUID(row["imported_ids"][0]))
+    assert "hosted-transformed" in record.tags

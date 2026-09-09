@@ -20,7 +20,7 @@ QUOTA_DEFERRAL = {
     "quota_limit": 1000,
     "quota_used": 1000,
     "reported_reset": "2026-10-01T00:00:00+00:00",
-    "next_action": "post-reset delta export",
+    "next_action": "manual platform export or support-assisted raw export",
 }
 
 
@@ -247,6 +247,11 @@ class MigrationService:
                 raise MemoryError("invalid_request", "hosted page must include app_id and records")
             if page["app_id"] not in apps:
                 raise MemoryError("invalid_request", "hosted app id is not in the project map")
+            if any(not isinstance(item, dict)
+                   or not isinstance(item.get("id"), str) or not item["id"]
+                   or not isinstance(item.get("memory"), str)
+                   for item in page["records"]):
+                raise MemoryError("invalid_request", "hosted records must include non-empty string ids and string memory text")
             normalized.append({"app_id": page["app_id"], "cursor": str(page.get("cursor", number)), "records": page["records"]})
         return normalized
 
@@ -265,20 +270,74 @@ class MigrationService:
 
     @batch_locked
     def import_mem0(self, batch: str, pages: list[dict] | None = None,
-                    quota_failure_after_page: int | None = None) -> dict:
+                    quota_failure_after_page: int | None = None,
+                    complete_counts: dict[str, int] | None = None,
+                    waived_missing: dict[str, int] | None = None) -> dict:
         self._manifest(batch)
         rows = self._rows(batch)
         normalized = self._hosted_pages(pages)
+        complete_counts = complete_counts or {}
+        waived_missing = waived_missing or {}
+        unknown_complete_apps = set(complete_counts) - self._mapped_apps()
+        unknown_waiver_apps = set(waived_missing) - set(complete_counts)
+        if (unknown_complete_apps or unknown_waiver_apps
+                or any(not isinstance(count, int) or count < 0
+                       for count in (*complete_counts.values(), *waived_missing.values()))):
+            raise MemoryError("invalid_request", "complete counts must be non-negative integers for mapped app ids")
         if not normalized:
-            deferred_scopes = [row for row in self._hosted_scope_latest(rows).values() if row.get("deferred")]
-            if deferred_scopes:
-                return {"batch": batch, "imported": 0, "deferred": QUOTA_DEFERRAL, "resume_cursor": deferred_scopes[0]["cursor"]}
+            if complete_counts:
+                raise MemoryError("invalid_request", "complete counts require at least one hosted export page")
             apps = sorted(self._mapped_apps())
             if not apps:
                 raise MemoryError("invalid_request", "project map has no hosted app ids")
-            entry = {"source_kind": "hosted", "source_identity": self._scope_identity(apps[0]), "source_hash": None, "raw_snapshot": None}
-            self._append(batch, self._row(entry, hosted_scope=True, deferred=QUOTA_DEFERRAL))
-            return {"batch": batch, "imported": 0, "deferred": QUOTA_DEFERRAL, "resume_cursor": None}
+            scopes = self._hosted_scope_latest(rows)
+            legacy_scope = self._scope_identity("app-two")
+            if "app-two" not in apps and scopes.get(legacy_scope, {}).get("deferred"):
+                entry = {"source_kind": "hosted", "source_identity": legacy_scope,
+                         "source_hash": None, "raw_snapshot": None}
+                correction = self._row(entry, hosted_scope=True,
+                                       correction="invalid synthetic fixture scope")
+                self._append(batch, correction)
+                scopes[legacy_scope] = correction
+            for app_id in apps:
+                scope = self._scope_identity(app_id)
+                if scope in scopes:
+                    continue
+                entry = {"source_kind": "hosted", "source_identity": scope,
+                         "source_hash": None, "raw_snapshot": None}
+                row = self._row(entry, hosted_scope=True, deferred=QUOTA_DEFERRAL)
+                self._append(batch, row)
+                scopes[scope] = row
+            deferred_scopes = [row for row in scopes.values() if row.get("deferred")]
+            return {"batch": batch, "imported": 0,
+                    "deferred": QUOTA_DEFERRAL if deferred_scopes else None,
+                    "deferred_scopes": sorted(row["source_identity"] for row in deferred_scopes),
+                    "resume_cursor": deferred_scopes[0]["cursor"] if deferred_scopes else None}
+        existing_hashes: dict[str, set[str]] = {}
+        for row in rows:
+            if row["source_kind"] == "hosted" and row.get("imported_ids"):
+                existing_hashes.setdefault(row["source_identity"], set()).add(row["source_hash"])
+        for app_id, expected_count in complete_counts.items():
+            scope = self._scope_identity(app_id)
+            prospective = {identity: set(hashes) for identity, hashes in existing_hashes.items()
+                           if identity.startswith(f"{scope}/")}
+            app_pages = [page for page in normalized if page["app_id"] == app_id]
+            if not app_pages:
+                raise MemoryError("invalid_request", f"complete count supplied without an export page for {scope}")
+            for page in app_pages:
+                for item in page["records"]:
+                    identity = f"{scope}/{item['id']}"
+                    digest = self._hash(json.dumps(item, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+                    prospective.setdefault(identity, set()).add(digest)
+            if any(len(hashes) != 1 for hashes in prospective.values()):
+                raise MemoryError("verification_failed", f"hosted export has conflicting versions for {scope}")
+            waived_count = waived_missing.get(app_id, 0)
+            if len(prospective) + waived_count != expected_count:
+                raise MemoryError(
+                    "verification_failed",
+                    f"hosted export count mismatch for {scope}: expected {expected_count}, "
+                    f"found {len(prospective)} plus {waived_count} waived",
+                )
         seen = {(row["source_identity"], row["source_hash"]) for row in rows
                 if row["source_kind"] == "hosted" and row.get("source_hash") and row.get("imported_ids")}
         scopes = self._hosted_scope_latest(rows)
@@ -302,17 +361,13 @@ class MigrationService:
                 if (identity, digest) in seen:
                     continue
                 entry = {"source_kind": "hosted", "source_identity": identity, "source_hash": digest, "raw_snapshot": snapshot}
+                tags = ("migration", batch, "hosted", "hosted-transformed") if item.get("_transformed") else ("migration", batch, "hosted")
                 record = self.service.add(AddRequest(f"migration:{batch}:hosted:{digest}", "fact", "global",
-                                                       str(item.get("memory", "")), tags=("migration", batch, "hosted")))
-                self._append(batch, self._row(entry, cursor=page["cursor"], imported_ids=[str(record.id)]))
+                                                       str(item.get("memory", "")), tags=tags))
+                self._append(batch, self._row(entry, cursor=page["cursor"], imported_ids=[str(record.id)],
+                                              transformed=bool(item.get("_transformed"))))
                 seen.add((identity, digest))
                 imported += 1
-            scope = self._scope_identity(page["app_id"])
-            if scopes.get(scope, {}).get("deferred"):
-                entry = {"source_kind": "hosted", "source_identity": scope, "source_hash": self._hash(raw), "raw_snapshot": snapshot}
-                row = self._row(entry, cursor=page["cursor"], hosted_scope=True)
-                self._append(batch, row)
-                scopes[scope] = row
             resume_cursor = page["cursor"]
             if quota_failure_after_page is not None and page_number + 1 >= quota_failure_after_page:
                 next_page = normalized[page_number + 1] if page_number + 1 < len(normalized) else page
@@ -323,7 +378,53 @@ class MigrationService:
                     row = self._row(entry, cursor=page["cursor"], hosted_scope=True, deferred=QUOTA_DEFERRAL)
                     self._append(batch, row)
                 return {"batch": batch, "imported": imported, "deferred": QUOTA_DEFERRAL, "resume_cursor": resume_cursor}
-        return {"batch": batch, "imported": imported, "deferred": None, "resume_cursor": resume_cursor}
+        rows = self._rows(batch)
+        for app_id, expected_count in complete_counts.items():
+            scope = self._scope_identity(app_id)
+            imported_identities = {
+                row["source_identity"] for row in rows
+                if row["source_kind"] == "hosted"
+                and row["source_identity"].startswith(f"{scope}/")
+                and row.get("imported_ids")
+            }
+            waived_count = waived_missing.get(app_id, 0)
+            if len(imported_identities) + waived_count != expected_count:
+                raise MemoryError(
+                    "verification_failed",
+                    f"hosted export count mismatch for {scope}: expected {expected_count}, "
+                    f"found {len(imported_identities)} plus {waived_count} waived",
+                )
+            page = next((candidate for candidate in reversed(normalized) if candidate["app_id"] == app_id), None)
+            if page is None:
+                raise MemoryError("invalid_request", f"complete count supplied without an export page for {scope}")
+            latest_scope = self._hosted_scope_latest(rows).get(scope)
+            if latest_scope and latest_scope.get("completion") == {
+                "expected_count": expected_count, "verified_count": len(imported_identities),
+                "waived_missing": waived_count,
+            }:
+                continue
+            raw = json.dumps(page, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            snapshot_key = f"{page['app_id']}:{page['cursor']}"
+            entry = {
+                "source_kind": "hosted",
+                "source_identity": scope,
+                "source_hash": self._hash(raw),
+                "raw_snapshot": f"hosted/{self._hash(snapshot_key.encode())}.json",
+            }
+            row = self._row(
+                entry, cursor=page["cursor"], raw_count=len(imported_identities), hosted_scope=True,
+                completion={"expected_count": expected_count,
+                            "verified_count": len(imported_identities),
+                            "waived_missing": waived_count},
+                waiver={"status": "waived", "reason": "missing_hosted_records",
+                        "decision": "user_approved"} if waived_count else None,
+            )
+            self._append(batch, row)
+            scopes[scope] = row
+            rows.append(row)
+        remaining = [row for row in self._hosted_scope_latest(self._rows(batch)).values() if row.get("deferred")]
+        return {"batch": batch, "imported": imported,
+                "deferred": QUOTA_DEFERRAL if remaining else None, "resume_cursor": resume_cursor}
 
     def _summary(self, batch: str) -> dict:
         manifest = self._manifest(batch)

@@ -131,6 +131,14 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--batch", required=True)
     migrate_commands.choices["import-local"].add_argument("--stop-after", type=int)
     migrate_commands.choices["import-mem0"].add_argument("--hosted-export")
+    migrate_commands.choices["import-mem0"].add_argument(
+        "--complete-count", action="append", default=[], metavar="APP_ID=COUNT",
+        help="clear a hosted deferral only when the ledger contains COUNT unique records for APP_ID",
+    )
+    migrate_commands.choices["import-mem0"].add_argument(
+        "--waive-missing", action="append", default=[], metavar="APP_ID=COUNT",
+        help="user-approved missing records counted toward the corresponding complete count",
+    )
     for name in ("defer", "waive"):
         command = migrate_commands.choices[name]
         command.add_argument("--source-identity", required=True)
@@ -222,7 +230,32 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
             if args.hosted_export:
                 loaded = json.loads(Path(args.hosted_export).read_text(encoding="utf-8"))
                 pages = loaded if isinstance(loaded, list) else [loaded]
-            return migration.import_mem0(args.batch, pages)
+            complete_counts = {}
+            for value in args.complete_count:
+                app_id, separator, count = value.partition("=")
+                if not separator or not app_id:
+                    raise MemoryError("invalid_request", "complete count must use APP_ID=COUNT")
+                try:
+                    parsed_count = int(count)
+                except ValueError as error:
+                    raise MemoryError("invalid_request", "complete count must use APP_ID=COUNT") from error
+                if app_id in complete_counts:
+                    raise MemoryError("invalid_request", f"complete count repeated for {app_id}")
+                complete_counts[app_id] = parsed_count
+            waived_missing = {}
+            for value in args.waive_missing:
+                app_id, separator, count = value.partition("=")
+                if not separator or not app_id:
+                    raise MemoryError("invalid_request", "missing waiver must use APP_ID=COUNT")
+                try:
+                    parsed_count = int(count)
+                except ValueError as error:
+                    raise MemoryError("invalid_request", "missing waiver must use APP_ID=COUNT") from error
+                if app_id in waived_missing:
+                    raise MemoryError("invalid_request", f"missing waiver repeated for {app_id}")
+                waived_missing[app_id] = parsed_count
+            return migration.import_mem0(args.batch, pages, complete_counts=complete_counts,
+                                         waived_missing=waived_missing)
         if args.migrate_command == "report":
             return migration.report(args.batch)
         if args.migrate_command in {"defer", "waive"}:
