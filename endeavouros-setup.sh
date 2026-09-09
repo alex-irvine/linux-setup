@@ -82,9 +82,12 @@ done
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow evolution ghostty git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator waybar zsh
+stow --target="$HOME" --restow agents evolution ghostty git gtk k9s lazydiff lazygit mako nvim opencode pi sway systemd task tmux tmuxinator waybar zsh
 stow --no-folding --target="$HOME" --restow claude
 cd -
+
+echo "==== Installing terminal-browser and provider adapters ===="
+bash "$SCRIPT_DIR/terminal-browser-setup.sh"
 
 echo "==== Setting dark color-scheme (dconf) ===="
 gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' || true
@@ -395,12 +398,6 @@ echo "==== Installing Azure CLI ===="
 yay -S --noconfirm --needed azure-cli
 
 ###########################################################
-# terminal-browser
-###########################################################
-echo "==== Installing terminal-browser ===="
-curl -fsSL https://terminal-browser.sh/install | bash
-
-###########################################################
 # Gonzo (log viewer) -- gonzofk fork
 ###########################################################
 echo "==== Installing gonzofk ===="
@@ -601,6 +598,9 @@ else
   echo "ERROR: ~/Proj/hermes-bots/install.sh missing; run clone-repos.sh first" >&2
   exit 1
 fi
+
+echo "==== Verifying terminal-browser provider adapters ===="
+bash "$SCRIPT_DIR/terminal-browser-setup.sh" --verify-only
 
 ###########################################################
 # Hermes backup (systemd user timer)

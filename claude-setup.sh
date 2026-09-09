@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 ###########################################################
 # Claude Code setup
@@ -82,8 +82,34 @@ claude plugin install mem0@mem0-plugins || true
 ###########################################################
 # 6. MCP
 ###########################################################
-claude mcp add --transport http -s user betterstack https://mcp.betterstack.com
-claude mcp add --transport http -s user composio https://connect.composio.dev/mcp
+remove_mcp_if_present() {
+  local server="$1" result
+  if result="$(claude mcp get "$server" 2>&1)"; then
+    claude mcp remove --scope user "$server"
+  else
+    case "$result" in
+      "No MCP server named \"$server\"."*) ;;
+      *) printf '%s\n' "$result" >&2; echo "ERROR: unable to verify Claude MCP '$server'" >&2; exit 1 ;;
+    esac
+  fi
+}
+
+add_http_mcp_if_missing() {
+  local server="$1" url result
+  url="$2"
+  if result="$(claude mcp get "$server" 2>&1)"; then
+    return 0
+  fi
+  case "$result" in
+    "No MCP server named \"$server\"."*) claude mcp add --transport http -s user "$server" "$url" ;;
+    *) printf '%s\n' "$result" >&2; echo "ERROR: unable to verify Claude MCP '$server'" >&2; exit 1 ;;
+  esac
+}
+
+remove_mcp_if_present chrome-devtools
+remove_mcp_if_present playwright
+add_http_mcp_if_missing betterstack https://mcp.betterstack.com
+add_http_mcp_if_missing composio https://connect.composio.dev/mcp
 
 cat <<'EOF'
 
