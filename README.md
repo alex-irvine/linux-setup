@@ -45,8 +45,8 @@ Sudo password cached for pacman/yay.
    docs/superpowers/plans/2026-07-22-firecrawl-cloud-migration-plan.md).
    Runs hermes-setup.sh (Hermes install, product-operations venv build,
    restore bootstrap).
-7. Runs mem0-setup.sh (central Mem0 API key, Hermes native memory provider
-   activation) — see "Mem0 cross-provider memory" below.
+7. Runs `agent-memory-setup.sh` to install the shared local memory CLI, stow the
+   canonical vault, provision local Ollama models, and enable its worker timer.
 8. Enables the persistent `hermes-backup.timer` (systemd user timer) for daily
    Google Drive backups; catches up after suspend/resume.
 9. Runs `setup-vpn.sh` — imports the OpenVPN profile into NetworkManager
@@ -84,43 +84,13 @@ Idempotent. Re-run safe.
 
 Full new-laptop restore runbook: [NEW-LAPTOP.md](NEW-LAPTOP.md)
 
-## Mem0 cross-provider memory
+## Shared agent memory
 
-`mem0-setup.sh` provisions one `MEM0_API_KEY` for Claude Code, Hermes, and
-OpenCode to share a single Mem0 Platform account instead of three separate,
-uncoordinated stores.
-
-- **Central key file:** `~/.config/mem0/env` — the *only* on-disk copy of the
-  secret. Not stowed, not committed, not nested inside any one provider's
-  directory (deliberately not `~/.hermes/.env`, even though Hermes's own
-  plugin also needs a copy there — see below).
-- **Get a key:** sign up at <https://app.mem0.ai>, grab it from
-  <https://app.mem0.ai/dashboard/api-keys> (starts with `m0-`).
-- **First run:** `~/Proj/linux-setup/mem0-setup.sh` prompts for the key
-  interactively if `~/.config/mem0/env` doesn't exist yet. Non-interactively
-  (e.g. scripted bootstrap): `MEM0_API_KEY=m0-... ~/Proj/linux-setup/mem0-setup.sh`.
-- **What it wires up:**
-  - Appends a 3-line source snippet to `~/.zshrc` (no secret value in the
-    tracked file itself) so Claude Code CLI and OpenCode pick up
-    `MEM0_API_KEY` in every interactive shell.
-  - Ensures the same key also lands in `~/.hermes/.env`, because Hermes's
-    own `mem0` plugin is hardcoded to read it from there or its own process
-    env — this is Hermes's implementation detail, not something this
-    mechanism can route around.
-  - Activates Hermes's native `mem0` memory provider
-    (`hermes memory setup mem0 --mode platform --user-id alex`) — **not** a
-    generic `mcp_servers:` entry; Hermes's native tools (`mem0_search`,
-    `mem0_add`, ...) already cover the same account, a generic MCP entry
-    would just duplicate them under different names.
-- **Claude Code / OpenCode:** get the *official* Mem0 plugin (lifecycle
-  hooks, not just bare tool access) — `claude-setup.sh` installs
-  `mem0@mem0-plugins`; `opencode.jsonc` lists `@mem0/opencode-plugin`.
-- **Shared identity:** all three must resolve to the same Mem0 `user_id`
-  (`alex`) for "store via one provider, read from another" to work. Hermes
-  is explicit (`--user-id alex`). Claude Code and OpenCode derive their own
-  identity — check it after first use (`/mem0:onboard`, `/mem0-status`) and
-  realign if it doesn't match.
-- Idempotent. Re-run safe, same as every other `*-setup.sh` here.
+`agent-memory-setup.sh` installs the local `memoryctl` service used by Claude,
+OpenCode, Hermes, and Pi. The canonical Markdown vault is stowed from
+`~/dotfiles/agents/.agents/memory` to `~/.agents/memory`; SQLite search state is
+rebuildable, Ollama supplies local embeddings and capture review, and a user
+timer drains the durable capture queue. No hosted credential is required.
 
 ## Layout
 

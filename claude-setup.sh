@@ -69,7 +69,6 @@ echo "==== Registering marketplaces ===="
 claude plugin marketplace add anthropics/claude-plugins-official || true
 claude plugin marketplace add JuliusBrussee/caveman || true
 claude plugin marketplace add jarrodwatts/claude-hud || true
-claude plugin marketplace add mem0ai/mem0 || true
 
 ###########################################################
 # 6. Plugins
@@ -77,7 +76,6 @@ claude plugin marketplace add mem0ai/mem0 || true
 echo "==== Installing plugins ===="
 claude plugin install caveman@caveman || true
 claude plugin install claude-hud@claude-hud || true
-claude plugin install mem0@mem0-plugins || true
 
 ###########################################################
 # 6. MCP
@@ -123,16 +121,4 @@ One manual step the first time you set up claude-hud:
 This writes a statusLine block into ~/.claude/settings.json. Since
 that file is tracked, commit + push afterwards and future fresh
 installs will inherit the HUD config automatically.
-EOF
-
-cat <<'EOF'
-
-One manual step the first time you set up mem0:
-  1. Start Claude:           claude
-  2. Run inside Claude:      /mem0:onboard
-  3. Follow the prompts.     Verifies the API key, imports CLAUDE.md/AGENTS.md,
-                             and shows your identity (user ID, project scope).
-
-Compare the reported user ID against OpenCode's (/mem0-status) and Hermes's
-(~/.hermes/mem0.json user_id) — see Task 8 of the cross-provider memory plan.
 EOF

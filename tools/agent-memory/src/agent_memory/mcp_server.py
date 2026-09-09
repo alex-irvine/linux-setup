@@ -81,7 +81,9 @@ def main(client: str = "unknown") -> None:
             request = json.loads(line)
             method = request.get("method")
             if method == "initialize":
-                response = {"jsonrpc": "2.0", "id": request.get("id"), "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}}}
+                response = {"jsonrpc": "2.0", "id": request.get("id"), "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "agent-memory", "version": "0.1.0"}}}
+            elif method == "notifications/initialized":
+                continue
             elif method == "tools/list":
                 response = {"jsonrpc": "2.0", "id": request.get("id"), "result": {"tools": [{"name": name, "inputSchema": _SCHEMAS[name]} for name in TOOLS]}}
             elif method == "tools/call":

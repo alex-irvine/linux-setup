@@ -1,2 +1,7 @@
 # VPN profiles contain inline private keys — never commit
 *.ovpn
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/

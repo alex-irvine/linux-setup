@@ -36,6 +36,25 @@ def test_capture_scanner_rejects_synthetic_structured_private_data():
         assert unsafe_reason(content)
 
 
+def test_mcp_initialize_returns_required_server_identity(tmp_path, monkeypatch):
+    import io
+    import json
+    import sys
+
+    from agent_memory import mcp_server
+
+    monkeypatch.setenv("AGENT_MEMORY_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("AGENT_MEMORY_VAULT", str(tmp_path / "vault"))
+    monkeypatch.setattr(sys, "stdin", io.StringIO('{"jsonrpc":"2.0","id":1,"method":"initialize"}\n'))
+    output = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", output)
+
+    mcp_server.main("test")
+
+    response = json.loads(output.getvalue())
+    assert response["result"]["serverInfo"] == {"name": "agent-memory", "version": "0.1.0"}
+
+
 def test_all_client_completed_work_events_require_reviewed_canonical_content(tmp_path):
     from agent_memory.capture import Outbox, Worker
     from agent_memory.index import MemoryIndex
