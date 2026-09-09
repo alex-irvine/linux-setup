@@ -22,8 +22,9 @@ def test_clean_home_install_is_idempotent_and_does_not_require_mem0(tmp_path):
     calls = tmp_path / "calls"
     bin_dir.mkdir()
     calls.touch()
-    write_executable(bin_dir / "memoryctl-stub", """#!/usr/bin/env bash
-printf '%s\\n' '{"ok":true,"result":{"active_count":0,"invalid_notes":[]}}'
+    write_executable(bin_dir / "memoryctl-stub", f"""#!/usr/bin/env bash
+printf 'memoryctl %s\\n' "$*" >> {calls!s}
+printf '%s\\n' '{{"ok":true,"result":{{"active_count":0,"invalid_notes":[]}}}}'
 """)
 
     write_executable(bin_dir / "uv", f'''#!/usr/bin/env bash
@@ -96,6 +97,7 @@ printf 'systemctl %s\\n' "$*" >> {calls!s}
     assert recorded.count("ollama list") == 2
     assert recorded.count("ollama pull test-embed") == 1
     assert recorded.count("ollama pull test-review") == 1
+    assert recorded.count("memoryctl worker --drain") == 2
     assert recorded.count("systemctl --user daemon-reload") == 2
     assert recorded.count("systemctl --user enable --now agent-memory-worker.timer") == 2
     assert "MEM0_API_KEY" not in "\n".join(
