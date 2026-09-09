@@ -580,8 +580,8 @@ bash "$SCRIPT_DIR/pi-setup.sh"
 echo "==== Running hermes-setup.sh ===="
 bash "$SCRIPT_DIR/hermes-setup.sh"
 
-echo "==== Running mem0-setup.sh ===="
-bash "$SCRIPT_DIR/mem0-setup.sh"
+echo "==== Running agent-memory-setup.sh ===="
+bash "$SCRIPT_DIR/agent-memory-setup.sh"
 
 echo "==== Restowing Hermes config, skills, and persona ===="
 cd ~/dotfiles
