@@ -67,17 +67,17 @@ def test_all_client_completed_work_events_require_reviewed_canonical_content(tmp
         "importance": 0.8, "confidence": 0.9, "tags": ["fixture"], "durability": True, "supersedes": [],
     }
     def embed(texts):
-        labels = ("claude", "opencode", "hermes", "pi")
-        return __import__("agent_memory.ollama", fromlist=["EmbeddingBatch"]).EmbeddingBatch([[float(next((index for index, label in enumerate(labels) if label in text), 0) == index) for index in range(4)] for text in texts])
+        labels = ("claude", "opencode", "hermes")
+        return __import__("agent_memory.ollama", fromlist=["EmbeddingBatch"]).EmbeddingBatch([[float(next((index for index, label in enumerate(labels) if label in text), 0) == index) for index in range(3)] for text in texts])
     service.ollama.embed = embed
     outbox = Outbox(home)
-    for client in ("claude", "opencode", "hermes", "pi"):
+    for client in ("claude", "opencode", "hermes"):
         outbox.enqueue("capture", {"id": client, "version": 1, "event": "completed_work", "client": client,
                                     "source_session": f"redacted-{client}", "project": "fixture",
                                     "evidence": {"assistant": "Public completed-work evidence."}})
         Worker(service, home).run(True)
     records = service.list(__import__("agent_memory.model", fromlist=["ListQuery"]).ListQuery(project="fixture"))
-    assert {record.source_client for record in records} == {"claude", "opencode", "hermes", "pi"}
+    assert {record.source_client for record in records} == {"claude", "opencode", "hermes"}
     assert all(record.content.startswith("Use reviewed public fixture") for record in records)
     assert all(record.source_session.startswith("redacted-") for record in records)
 

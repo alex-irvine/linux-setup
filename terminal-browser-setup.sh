@@ -54,7 +54,7 @@ verify_mcp_absent() {
 stow_dotfiles() {
   [[ -d "$DOTFILES" ]] || die "dotfiles directory missing: $DOTFILES"
   cd "$DOTFILES"
-  stow --target="$HOME" --restow agents opencode pi zsh
+  stow --target="$HOME" --restow agents opencode zsh
   stow --no-folding --target="$HOME" --restow claude
   stow --no-folding --target="$HOME" --restow hermes
 }
@@ -78,8 +78,6 @@ verify_deployment() {
   verify_link "$HOME/.claude/skills/terminal-browser-workflow" "$DOTFILES/agents/.agents/skills/terminal-browser-workflow"
   verify_link "$HOME/.claude/skills/browser-debugger" "$DOTFILES/agents/.agents/skills/browser-debugger"
   verify_link "$HOME/.claude/agents/browser-debugger.md" "$DOTFILES/claude/.claude/agents/browser-debugger.md"
-  [[ -f "$HOME/.pi/agent/extensions/subagents.ts" ]] || die "missing Pi adapter: $HOME/.pi/agent/extensions/subagents.ts"
-  cmp -s "$HOME/.pi/agent/extensions/subagents.ts" "$DOTFILES/pi/.pi/agent/extensions/subagents.ts" || die "Pi adapter differs from source: $HOME/.pi/agent/extensions/subagents.ts"
   verify_link "$HOME/.local/bin/tmux-browser" "$DOTFILES/agents/.local/bin/tmux-browser"
   verify_link "$HOME/.local/bin/tmux-browser-cleanup" "$DOTFILES/agents/.local/bin/tmux-browser-cleanup"
   verify_link "$HOME/.local/bin/plannotator-terminal-browser" "$DOTFILES/agents/.local/bin/plannotator-terminal-browser"
@@ -132,7 +130,7 @@ verify_runtime() {
   '; then
     die "OpenCode merged runtime config failed validation"
   fi
-  printf 'OK: terminal-browser, shared skills, and four provider adapters verified\n'
+  printf 'OK: terminal-browser, shared skills, and three provider adapters verified\n'
 }
 
 if [[ "${1:-}" != --verify-only ]]; then

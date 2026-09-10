@@ -16,7 +16,7 @@ new_fixture() {
   export PATH="$TEST_TMP/bin:/usr/bin:/bin"
   export TEST_LOG="$TEST_TMP/log" CLAUDE_STATE="$TEST_TMP/claude-state"
   export TB_STATE="$TEST_TMP/tb-state"
-  for pkg in agents opencode claude pi hermes zsh; do mkdir -p "$DOTFILES/$pkg"; done
+  for pkg in agents opencode claude hermes zsh; do mkdir -p "$DOTFILES/$pkg"; done
   mkdir -p "$DOTFILES/agents/.agents/skills/terminal-browser-workflow" "$DOTFILES/agents/.agents/skills/browser-debugger" "$DOTFILES/agents/.local/bin"
   : >"$DOTFILES/agents/.agents/skills/terminal-browser-workflow/SKILL.md" "$DOTFILES/agents/.agents/skills/browser-debugger/SKILL.md"
   printf '#!/usr/bin/env bash\n' >"$DOTFILES/agents/.local/bin/tmux-browser"
@@ -26,7 +26,6 @@ new_fixture() {
   mkdir -p "$DOTFILES/opencode/.config/opencode/agents" "$DOTFILES/opencode/.config/opencode"
   : >"$DOTFILES/opencode/.config/opencode/agents/browser-debugger.md"; printf '{}\n' >"$DOTFILES/opencode/.config/opencode/opencode.jsonc"
   mkdir -p "$DOTFILES/claude/.claude/agents"; : >"$DOTFILES/claude/.claude/agents/browser-debugger.md"
-  mkdir -p "$DOTFILES/pi/.pi/agent/extensions"; : >"$DOTFILES/pi/.pi/agent/extensions/subagents.ts"
   mkdir -p "$DOTFILES/hermes/.hermes/skills/software-development/terminal-browser-workflow" "$DOTFILES/hermes/.hermes/skills/software-development/browser-debugger"
   : >"$DOTFILES/hermes/.hermes/SOUL.md" "$DOTFILES/hermes/.hermes/skills/software-development/terminal-browser-workflow/SKILL.md" "$DOTFILES/hermes/.hermes/skills/software-development/browser-debugger/SKILL.md"
 }
@@ -64,7 +63,6 @@ for pkg in "$@"; do case "$pkg" in
   agents) omit canonical || { mkdir -p "$HOME/.agents/skills"; if [[ "${STOW_BAD_TARGET:-}" == canonical ]]; then ln -sfn "$DOTFILES/claude/.claude/agents" "$HOME/.agents/skills/terminal-browser-workflow"; else ln -sfn "$DOTFILES/agents/.agents/skills/terminal-browser-workflow" "$HOME/.agents/skills/terminal-browser-workflow"; fi; ln -sfn "$DOTFILES/agents/.agents/skills/browser-debugger" "$HOME/.agents/skills/browser-debugger"; }; omit launcher || { mkdir -p "$HOME/.local/bin"; ln -sfn "$DOTFILES/agents/.local/bin/tmux-browser" "$HOME/.local/bin/tmux-browser"; [[ "${STOW_NONEXEC:-}" == launcher ]] && chmod a-x "$HOME/.local/bin/tmux-browser"; }; omit cleanup || { mkdir -p "$HOME/.local/bin"; if [[ "${STOW_BAD_TARGET:-}" == cleanup ]]; then ln -sfn "$DOTFILES/claude/.claude/agents/browser-debugger.md" "$HOME/.local/bin/tmux-browser-cleanup"; else ln -sfn "$DOTFILES/agents/.local/bin/tmux-browser-cleanup" "$HOME/.local/bin/tmux-browser-cleanup"; fi; [[ "${STOW_NONEXEC:-}" == cleanup ]] && chmod a-x "$HOME/.local/bin/tmux-browser-cleanup"; }; omit plannotator-adapter || { mkdir -p "$HOME/.local/bin"; if [[ "${STOW_BAD_TARGET:-}" == plannotator-adapter ]]; then ln -sfn "$DOTFILES/claude/.claude/agents/browser-debugger.md" "$HOME/.local/bin/plannotator-terminal-browser"; else ln -sfn "$DOTFILES/agents/.local/bin/plannotator-terminal-browser" "$HOME/.local/bin/plannotator-terminal-browser"; fi; [[ "${STOW_NONEXEC:-}" == plannotator-adapter ]] && chmod a-x "$HOME/.local/bin/plannotator-terminal-browser"; } ;;
   opencode) omit opencode-skills || { mkdir -p "$HOME/.config/opencode/skills"; ln -sfn "$DOTFILES/agents/.agents/skills/terminal-browser-workflow" "$HOME/.config/opencode/skills/terminal-browser-workflow"; ln -sfn "$DOTFILES/agents/.agents/skills/browser-debugger" "$HOME/.config/opencode/skills/browser-debugger"; }; omit opencode-agent || { mkdir -p "$HOME/.config/opencode/agents"; ln -sfn "$DOTFILES/opencode/.config/opencode/agents/browser-debugger.md" "$HOME/.config/opencode/agents/browser-debugger.md"; }; omit opencode-config || { mkdir -p "$HOME/.config/opencode"; ln -sfn "$DOTFILES/opencode/.config/opencode/opencode.jsonc" "$HOME/.config/opencode/opencode.jsonc"; } ;;
  claude) omit claude-skills || { mkdir -p "$HOME/.claude/skills"; ln -sfn "$DOTFILES/agents/.agents/skills/terminal-browser-workflow" "$HOME/.claude/skills/terminal-browser-workflow"; ln -sfn "$DOTFILES/agents/.agents/skills/browser-debugger" "$HOME/.claude/skills/browser-debugger"; }; omit claude-agent || { mkdir -p "$HOME/.claude/agents"; ln -sfn "$DOTFILES/claude/.claude/agents/browser-debugger.md" "$HOME/.claude/agents/browser-debugger.md"; } ;;
- pi) omit pi || { mkdir -p "$HOME/.pi/agent/extensions"; cp "$DOTFILES/pi/.pi/agent/extensions/subagents.ts" "$HOME/.pi/agent/extensions/subagents.ts"; } ;;
  hermes) omit hermes-skills || { mkdir -p "$HOME/.hermes/skills/software-development"; ln -sfn "$DOTFILES/agents/.agents/skills/terminal-browser-workflow" "$HOME/.hermes/skills/software-development/terminal-browser-workflow"; ln -sfn "$DOTFILES/agents/.agents/skills/browser-debugger" "$HOME/.hermes/skills/software-development/browser-debugger"; }; omit hermes-soul || { mkdir -p "$HOME/.hermes"; ln -sfn "$DOTFILES/hermes/.hermes/SOUL.md" "$HOME/.hermes/SOUL.md"; } ;;
  zsh) : ;;
  esac; done
@@ -188,7 +186,7 @@ test_failures_propagate() {
 }
 
 test_verification_matrix() {
-  for omission in canonical launcher cleanup plannotator-adapter opencode-skills opencode-agent claude-skills claude-agent pi hermes-skills hermes-soul; do
+  for omission in canonical launcher cleanup plannotator-adapter opencode-skills opencode-agent claude-skills claude-agent hermes-skills hermes-soul; do
     new_fixture; install_fakes
     run_fail env STOW_OMIT="$omission" TERMINAL_BROWSER_INSTALLER="$TEST_TMP/installer" "$SUT"
   done

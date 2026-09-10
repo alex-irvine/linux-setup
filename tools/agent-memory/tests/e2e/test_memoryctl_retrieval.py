@@ -153,7 +153,7 @@ def test_mcp_client_identity_is_persisted_and_rebuilt(memory_app, fake_ollama, t
     env = {"AGENT_MEMORY_HOME": str(tmp_path / "state"), "AGENT_MEMORY_VAULT": str(tmp_path / "vault"),
            "OLLAMA_URL": fake_ollama.url}
     records = []
-    for client in ("claude", "opencode", "hermes", "pi"):
+    for client in ("claude", "opencode", "hermes"):
         process = subprocess.Popen([sys.executable, "-m", "agent_memory.cli", "mcp", "--client", client],
                                    env={**os.environ, **env}, text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         try:
@@ -169,6 +169,6 @@ def test_mcp_client_identity_is_persisted_and_rebuilt(memory_app, fake_ollama, t
         finally:
             process.terminate()
             process.wait(timeout=5)
-    assert {record["source_client"] for record in records} == {"claude", "opencode", "hermes", "pi"}
+    assert {record["source_client"] for record in records} == {"claude", "opencode", "hermes"}
     memory_app("rebuild")
-    assert {record["source_client"] for record in memory_app("list", "--project", "task-8")["memories"]} == {"claude", "opencode", "hermes", "pi"}
+    assert {record["source_client"] for record in memory_app("list", "--project", "task-8")["memories"]} == {"claude", "opencode", "hermes"}

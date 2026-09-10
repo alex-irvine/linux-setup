@@ -8,7 +8,7 @@ This repository owns application installation and base operating-system configur
 
 It does not own user configuration, shell aliases, application dotfiles, shared skills, provider adapters, or user workflow scripts. Those belong in the GNU Stow repository at `~/dotfiles`. Application and project repositories belong under `~/Proj`; runtime state and secrets stay untracked in their owning runtime directories.
 
-`linux-setup` owns installing and provisioning the vendor `terminal-browser` executable. `~/dotfiles` owns the shared skills, the fixed-scale `tmux-browser` launcher, the one-URL `plannotator-terminal-browser` Vim adapter, and the OpenCode, Claude Code, Pi, and Hermes adapters. Setup Stows and verifies both browser executables. Copilot CLI is not a supported provider for this workflow. Copilot CLI may still be installed for unrelated use, but it is excluded from terminal-browser provider support. Interactive browser surfaces use terminal-browser only; Playwright is retained solely for repository CLI/CI test suites and is not installed or registered as an agent MCP.
+`linux-setup` owns installing and provisioning the vendor `terminal-browser` executable. `~/dotfiles` owns the shared skills, the fixed-scale `tmux-browser` launcher, the one-URL `plannotator-terminal-browser` Vim adapter, and the OpenCode, Claude Code, and Hermes adapters. Setup Stows and verifies both browser executables. Copilot CLI is not a supported provider for this workflow. Copilot CLI may still be installed for unrelated use, but it is excluded from terminal-browser provider support. Interactive browser surfaces use terminal-browser only; Playwright is retained solely for repository CLI/CI test suites and is not installed or registered as an agent MCP.
 
 Standalone `terminal-browser-setup.sh` also Stows the dotfiles `zsh` package, including `~/.zshrc`. Its zsh targets must therefore be absent or already Stow-compatible. If an unmanaged zsh configuration exists, use the full `endeavouros-setup.sh` path: it performs the normal removal handling before the initial Stow. The standalone script does not delete or overwrite user files.
 
@@ -30,7 +30,7 @@ Sudo password cached for pacman/yay.
 1. pacman base tools + `github-cli` → `gh auth login` (gates dotfiles clone).
 2. Clones `~/dotfiles` and stows every package (sway, ghostty, mako, nvim,
    tmux, tmuxinator, waybar, zsh, gtk, systemd, git, k9s, lazygit,
-   **agents**, **claude**, **opencode**, **pi**, **hermes**).
+   **agents**, **claude**, **opencode**, **hermes**).
 3. Installs apps + CLIs: yay, Go, Node, Neovim, Nerd Fonts, Rust,
    tree-sitter, Oh My Zsh, tmux + tpm, Chrome, Docker, kubectl, helm,
    k9s, flux, bottom, earlyoom, Evolution + ews, git/gh, lazygit, tig,
@@ -87,7 +87,7 @@ Full new-laptop restore runbook: [NEW-LAPTOP.md](NEW-LAPTOP.md)
 ## Shared agent memory
 
 `agent-memory-setup.sh` installs the local `memoryctl` service used by Claude,
-OpenCode, Hermes, and Pi. The canonical Markdown vault is stowed from
+OpenCode, and Hermes. The canonical Markdown vault is stowed from
 `~/dotfiles/agents/.agents/memory` to `~/.agents/memory`; SQLite search state is
 rebuildable, Ollama supplies local embeddings and capture review, and a user
 timer drains the durable capture queue. No hosted credential is required.

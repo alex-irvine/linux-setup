@@ -40,15 +40,15 @@ def test_sync_commits_only_memory_and_preserves_user_index(git_fixture):
     (repo / "opencode").mkdir()
     (repo / "opencode/config.jsonc").write_text("staged-user-change", encoding="utf-8")
     git(repo, "add", "opencode/config.jsonc")
-    (repo / "pi").mkdir()
-    (repo / "pi/extension.ts").write_text("unstaged-user-change", encoding="utf-8")
+    (repo / "hermes").mkdir()
+    (repo / "hermes/config.yaml").write_text("unstaged-user-change", encoding="utf-8")
     before_index = git(repo, "write-tree").stdout
     created = memory(repo, env, "add", "--request-id", "a", "--type", "fact", "--scope", "global", "--content", "a")
     report = memory(repo, env, "worker", "--drain")
     assert report["sync"]["commit_created"] is True
     assert git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").stdout.splitlines() == ["agents/.agents/memory/Global/" + created["id"] + ".md"]
     assert git(repo, "write-tree").stdout == before_index
-    assert (repo / "pi/extension.ts").read_text(encoding="utf-8") == "unstaged-user-change"
+    assert (repo / "hermes/config.yaml").read_text(encoding="utf-8") == "unstaged-user-change"
     assert git(remote, "rev-parse", "main").stdout == git(repo, "rev-parse", "HEAD").stdout
 
 

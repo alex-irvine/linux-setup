@@ -48,7 +48,7 @@ def parser() -> argparse.ArgumentParser:
     for name in ("get", "list", "search", "update", "delete", "status", "pin", "scope",
                    "feedback", "rebuild", "reconcile", "maintain", "delete-all", "purge", "enqueue", "worker", "relocate-legacy"):
         commands.add_parser(name)
-    commands.add_parser("mcp").add_argument("--client", required=True, choices=("claude", "opencode", "hermes", "pi"))
+    commands.add_parser("mcp").add_argument("--client", required=True, choices=("claude", "opencode", "hermes"))
     commands.choices["get"].add_argument("--id", required=True)
     commands.choices["list"].add_argument("--project")
     commands.choices["list"].add_argument("--scope")

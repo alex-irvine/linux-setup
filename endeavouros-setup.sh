@@ -82,7 +82,7 @@ done
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow agents evolution ghostty git gtk k9s lazydiff lazygit mako nvim opencode pi sway systemd task tmux tmuxinator waybar zsh
+stow --target="$HOME" --restow agents evolution ghostty git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator waybar zsh
 stow --no-folding --target="$HOME" --restow claude
 cd -
 
@@ -570,12 +570,6 @@ bash "$SCRIPT_DIR/firecrawl-setup.sh"
 ###########################################################
 echo "==== Running opencode-setup.sh ===="
 bash "$SCRIPT_DIR/opencode-setup.sh"
-
-###########################################################
-# pi (AI coding agent)
-###########################################################
-echo "==== Running pi-setup.sh ===="
-bash "$SCRIPT_DIR/pi-setup.sh"
 
 echo "==== Running hermes-setup.sh ===="
 bash "$SCRIPT_DIR/hermes-setup.sh"

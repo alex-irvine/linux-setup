@@ -162,7 +162,7 @@ class Worker:
         if self.service.store.sync_dirty() and not self.outbox.has_sync(): self.queue_sync()
 
     def _capture(self, payload: dict, report: dict) -> None:
-        if payload.get("event") != "completed_work" or payload.get("version") != 1 or payload.get("client") not in {"claude", "opencode", "hermes", "pi"} or not isinstance(payload.get("evidence"), dict):
+        if payload.get("event") != "completed_work" or payload.get("version") != 1 or payload.get("client") not in {"claude", "opencode", "hermes"} or not isinstance(payload.get("evidence"), dict):
             report["rejected_by_reason"].append("invalid_capture_event"); return
         candidate_id = payload.get("id", "capture")
         evidence = payload["evidence"]

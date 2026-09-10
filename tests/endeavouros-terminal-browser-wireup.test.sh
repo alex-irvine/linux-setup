@@ -5,7 +5,7 @@ CONTENT="$(<"$ROOT_DIR/endeavouros-setup.sh")"
 fail() { printf 'FAIL: %s\n' "$1"; exit 1; }
 [[ "$CONTENT" == *'bash "$SCRIPT_DIR/terminal-browser-setup.sh"'* ]] || fail 'missing terminal-browser setup call'
 [[ "$CONTENT" == *' agents '* ]] || fail 'missing agents Stow package'
-[[ "$CONTENT" == *' pi '* ]] || fail 'missing pi Stow package'
+[[ "$CONTENT" != *' pi '* ]] || fail 'pi Stow package remains'
 [[ "$CONTENT" != *'curl -fsSL https://terminal-browser'* ]] || fail 'raw terminal-browser installer remains'
 CLAUDE_CONTENT="$(<"$ROOT_DIR/claude-setup.sh")"
 [[ "$CLAUDE_CONTENT" == *'remove_mcp_if_present chrome-devtools'* ]] || fail 'Claude browser cleanup missing'
@@ -20,13 +20,12 @@ cleanup=$(grep -n '^for d in ~/.config/sway' "$ROOT_DIR/endeavouros-setup.sh" | 
 initial_stow=$(grep -n '^stow --target="$HOME" --restow agents evolution' "$ROOT_DIR/endeavouros-setup.sh" | cut -d: -f1)
 claude=$(grep -n 'bash "$SCRIPT_DIR/claude-setup.sh"' "$ROOT_DIR/endeavouros-setup.sh" | cut -d: -f1)
 opencode=$(grep -n 'bash "$SCRIPT_DIR/opencode-setup.sh"' "$ROOT_DIR/endeavouros-setup.sh" | cut -d: -f1)
-pi=$(grep -n 'bash "$SCRIPT_DIR/pi-setup.sh"' "$ROOT_DIR/endeavouros-setup.sh" | cut -d: -f1)
 hermes=$(grep -n 'bash "$SCRIPT_DIR/hermes-setup.sh"' "$ROOT_DIR/endeavouros-setup.sh" | cut -d: -f1)
 hermes_restow=$(grep -n 'stow --no-folding --target="$HOME" --restow hermes' "$ROOT_DIR/endeavouros-setup.sh" | tail -1 | cut -d: -f1)
 verify=$(grep -n -- '--verify-only' "$ROOT_DIR/endeavouros-setup.sh" | cut -d: -f1)
 [[ "${#setup_lines[@]}" -eq 2 ]] || fail 'expected normal and final terminal-browser setup calls'
-[[ -n "$verify" && "$clone" -lt "$cleanup" && "$cleanup" -lt "$initial_stow" && "$initial_stow" -lt "$setup" && "$setup" -lt "$claude" && "$claude" -lt "$opencode" && "$opencode" -lt "$pi" && "$pi" -lt "$hermes" && "$hermes" -lt "$hermes_restow" && "$hermes_restow" -lt "$verify" ]] || fail 'clone/cleanup/initial-stow/setup/provider/final-verification ordering'
-for marker in 'bash "$SCRIPT_DIR/claude-setup.sh"' 'bash "$SCRIPT_DIR/opencode-setup.sh"' 'bash "$SCRIPT_DIR/pi-setup.sh"' 'bash "$SCRIPT_DIR/hermes-setup.sh"' 'stow --no-folding --target="$HOME" --restow hermes'; do
+[[ -n "$verify" && "$clone" -lt "$cleanup" && "$cleanup" -lt "$initial_stow" && "$initial_stow" -lt "$setup" && "$setup" -lt "$claude" && "$claude" -lt "$opencode" && "$opencode" -lt "$hermes" && "$hermes" -lt "$hermes_restow" && "$hermes_restow" -lt "$verify" ]] || fail 'clone/cleanup/initial-stow/setup/provider/final-verification ordering'
+for marker in 'bash "$SCRIPT_DIR/claude-setup.sh"' 'bash "$SCRIPT_DIR/opencode-setup.sh"' 'bash "$SCRIPT_DIR/hermes-setup.sh"' 'stow --no-folding --target="$HOME" --restow hermes'; do
   line=$(grep -nF "$marker" "$ROOT_DIR/endeavouros-setup.sh" | tail -1 | cut -d: -f1)
   [[ "$line" -lt "$verify" ]] || fail "provider readiness before final verify: $marker"
 done
