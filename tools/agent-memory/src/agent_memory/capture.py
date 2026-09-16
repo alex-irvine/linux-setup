@@ -206,9 +206,10 @@ class Worker:
         report["accepted"].append(candidate_id)
         self.queue_sync()
 
-    def run(self, drain: bool) -> dict:
+    def run(self, drain: bool, limit: int | None = None) -> dict:
         self.ensure_dirty_sync()
         report = {"accepted": [], "rejected_by_reason": [], "sync": None, "retrying": 0, "accepted_sync_note": None}
+        processed = 0
         while True:
             claimed = self.outbox.claim()
             if not claimed: break
@@ -228,6 +229,7 @@ class Worker:
             except (OSError, ValueError, RuntimeError) as error:
                 retry = True; report["retrying"] += 1
             self.outbox.finish(path, envelope, retry)
-            if not drain: break
+            processed += 1
+            if (limit is not None and processed >= limit) or (limit is None and not drain): break
         report["outbox"] = self.outbox.counts()
         return report

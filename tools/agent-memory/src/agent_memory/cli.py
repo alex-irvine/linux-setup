@@ -117,6 +117,7 @@ def parser() -> argparse.ArgumentParser:
     worker_group = worker.add_mutually_exclusive_group(required=True)
     worker_group.add_argument("--once", action="store_true")
     worker_group.add_argument("--drain", action="store_true")
+    worker_group.add_argument("--limit", type=int, metavar="N")
     sync = commands.add_parser("sync")
     sync_commands = sync.add_subparsers(dest="sync_command", required=True)
     pause = sync_commands.add_parser("pause")
@@ -202,8 +203,10 @@ def dispatch(service: MemoryService, args: argparse.Namespace):
         raw = sys.stdin.read() if args.json_input == "-" else Path(args.json_input).read_text(encoding="utf-8")
         return Outbox(service.store.home).enqueue(args.kind, json.loads(raw))
     if args.command == "worker":
+        if args.limit is not None and args.limit < 1:
+            raise MemoryError("invalid_request", "worker limit must be at least 1")
         repo = Path(os.environ["AGENT_MEMORY_REPO"]) if os.environ.get("AGENT_MEMORY_REPO") else None
-        return Worker(service, service.store.home, repo).run(args.drain)
+        return Worker(service, service.store.home, repo).run(args.drain, args.limit)
     if args.command == "sync":
         marker = service.store.home / "sync-paused.json"
         if args.sync_command == "pause":

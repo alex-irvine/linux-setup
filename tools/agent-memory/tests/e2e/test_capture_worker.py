@@ -40,3 +40,13 @@ def test_concurrent_workers_claim_each_envelope_once(tmp_path):
         assert worker.returncode == 0, stderr or stdout
     counts = run(env, "status")["result"]["outbox"]
     assert counts == {"ready": 0, "running": 0, "done": 4}
+
+
+def test_worker_limit_processes_a_bounded_batch(tmp_path):
+    env = {"AGENT_MEMORY_HOME": str(tmp_path / "state"), "AGENT_MEMORY_VAULT": str(tmp_path / "vault")}
+    for number in range(7):
+        run(env, "enqueue", "--kind", "capture", "--json-input", "-", input=json.dumps({"id": str(number), "content": "Task status: in progress"}))
+
+    report = run(env, "worker", "--limit", "3")["result"]
+
+    assert report["outbox"] == {"ready": 4, "running": 0, "done": 3}
