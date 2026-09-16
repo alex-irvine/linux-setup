@@ -86,9 +86,6 @@ stow --target="$HOME" --restow agents evolution ghostty git gtk k9s lazydiff laz
 stow --no-folding --target="$HOME" --restow claude
 cd -
 
-echo "==== Installing terminal-browser and provider adapters ===="
-bash "$SCRIPT_DIR/terminal-browser-setup.sh"
-
 echo "==== Setting dark color-scheme (dconf) ===="
 gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' || true
 gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' || true
@@ -592,9 +589,6 @@ else
   echo "ERROR: ~/Proj/hermes-bots/install.sh missing; run clone-repos.sh first" >&2
   exit 1
 fi
-
-echo "==== Verifying terminal-browser provider adapters ===="
-bash "$SCRIPT_DIR/terminal-browser-setup.sh" --verify-only
 
 ###########################################################
 # Hermes backup (systemd user timer)
