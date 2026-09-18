@@ -35,7 +35,10 @@ Sudo password cached for pacman/yay.
    Beekeeper, Remmina, LibreOffice, az cli, Copilot CLI, gonzo, logcli, yq, air.
 4. Pulls private `lazyorc` + `lazyfleet` releases via gh.
 5. Runs `claude-setup.sh` — installs Claude Code CLI, rtk, marketplaces
-   (caveman, claude-plugins-official, claude-hud), plugins.
+   (caveman, claude-plugins-official, claude-hud), plugins. Then installs
+   **graphify** (pinned, `uv tool`) — the knowledge-graph backend the dotfiles
+   `graph-scout` subagent queries over MCP. `graphify install` is deliberately
+   not run; the stowed `graph-scout-mcp` launcher is the only entry point.
 6. Runs `firecrawl-setup.sh` first (installs firecrawl-cli, seeds its
    stored credentials, ensures `~/.hermes/.env` has `FIRECRAWL_API_KEY`/
    `FIRECRAWL_API_URL` — both Hermes and OpenCode's firecrawl-* skills

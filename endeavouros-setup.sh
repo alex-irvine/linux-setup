@@ -518,6 +518,38 @@ echo "==== Running claude-setup.sh ===="
 bash "$SCRIPT_DIR/claude-setup.sh"
 
 ###########################################################
+# graphify (knowledge-graph backend for the graph-scout agent)
+#
+# Backs the graph-scout subagent in dotfiles (claude + opencode). graphify
+# turns a repo into a queryable graph of call/import/inherit edges; the agent
+# queries it over MCP instead of grepping. See dotfiles CLAUDE.md
+# "Repository Structure Questions".
+#
+# Pinned: graphify is pre-1.0 (Apache-2.0, single dominant maintainer) and its
+# extraction output is not stable across releases, so the version here must
+# match the one pinned in a repo's .github/workflows/graphify.yml or a
+# CI-built graph will not match a locally built one. Bump both together.
+#
+# Installed with `uv tool install`, so its ~35 tree-sitter grammars live in an
+# isolated venv and never touch the system Python. Extras:
+#   mcp     the stdio server the graph-scout launcher execs
+#   leiden  community detection (subsystem boundaries)
+#   sql     tree-sitter-sql, needed for .sql files in PrimaVeraWS
+#
+# No LLM backend is configured on purpose: graph-scout builds run --code-only,
+# which is local deterministic AST parsing with no API key and no network, so
+# a build costs nothing and sends no source anywhere.
+###########################################################
+echo "==== Installing graphify ===="
+GRAPHIFY_VERSION=0.9.63
+uv tool install --force "graphifyy[mcp,leiden,sql]==$GRAPHIFY_VERSION"
+
+# Deliberately NOT running `graphify install`: it writes a ~41KB SKILL.md into
+# ~/.claude/skills and appends a section to ~/.claude/CLAUDE.md, both outside
+# stow and both duplicating the graph-scout agent that dotfiles already ships.
+# The stowed launcher (graph-scout-mcp) is the only supported entry point.
+
+###########################################################
 # Ollama (local LLM runtime) + Qwen2.5-Coder
 #
 # Backs opencode's local provider (see dotfiles opencode.jsonc).
