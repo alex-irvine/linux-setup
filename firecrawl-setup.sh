@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Runs BEFORE opencode-setup.sh and hermes-setup.sh -- both are downstream
-# consumers of the credential this script provisions (Hermes reads
-# FIRECRAWL_API_KEY/FIRECRAWL_API_URL straight out of ENV_FILE; OpenCode's
-# firecrawl-* skills shell out to the `firecrawl` CLI, which authenticates
-# via its own stored-credentials file, seeded below). If no key is set yet
+# Runs BEFORE hermes-setup.sh, which is the downstream consumer of the
+# credential this script provisions: Hermes reads FIRECRAWL_API_KEY and
+# FIRECRAWL_API_URL straight out of ENV_FILE for its `web.backend: firecrawl`
+# search path. This script provisions that credential only. The firecrawl CLI
+# is deliberately not installed: agents reach Firecrawl through the Composio
+# MCP behind an isolated provider child. If no key is set yet
 # and this is running at an interactive terminal, prompts for one; otherwise
 # soft-skips so unattended/automated runs never block. Idempotent either
 # way -- safe to skip now and re-run later once you have a key.
@@ -66,7 +67,6 @@ is_interactive() {
 }
 
 main() {
-  ensure_cmd npm
 
   # Safe to create ENV_FILE before Hermes itself is installed: Hermes's own
   # installer only writes it `if [ ! -f "$HERMES_HOME/.env" ]`, and logs
@@ -77,11 +77,6 @@ main() {
   chmod 600 "$ENV_FILE"
 
   ensure_env_key_if_missing "$ENV_FILE" "FIRECRAWL_API_URL" "https://api.firecrawl.dev"
-
-  if ! command -v firecrawl >/dev/null 2>&1; then
-    log "installing firecrawl-cli"
-    npm install -g firecrawl-cli
-  fi
 
   local key
   key="$(read_env_key "$ENV_FILE" "FIRECRAWL_API_KEY")"
@@ -102,14 +97,10 @@ main() {
     log "no FIRECRAWL_API_KEY set in $ENV_FILE yet"
     log "sign up at https://firecrawl.dev/, then re-run this script (prompts for it"
     log "interactively), or uncomment and set it in $ENV_FILE by hand"
-    log "firecrawl-cli installed; keyless free tier active until then (rate-limited)"
     return 0
   fi
 
-  log "seeding firecrawl-cli stored credentials from $ENV_FILE"
-  firecrawl login --api-key "$key" >/dev/null
-
-  log "firecrawl-setup complete (Hermes reads $ENV_FILE directly; OpenCode's firecrawl-* skills use the CLI's stored credentials just seeded)"
+  log "firecrawl-setup complete (Hermes reads $ENV_FILE directly)"
 }
 
 main "$@"

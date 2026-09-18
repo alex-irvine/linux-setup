@@ -39,11 +39,11 @@ Sudo password cached for pacman/yay.
    **graphify** (pinned, `uv tool`) — the knowledge-graph backend the dotfiles
    `graph-scout` subagent queries over MCP. `graphify install` is deliberately
    not run; the stowed `graph-scout-mcp` launcher is the only entry point.
-6. Runs `firecrawl-setup.sh` first (installs firecrawl-cli, seeds its
-   stored credentials, ensures `~/.hermes/.env` has `FIRECRAWL_API_KEY`/
-   `FIRECRAWL_API_URL` — both Hermes and OpenCode's firecrawl-* skills
-   read from this single source; see
-   docs/superpowers/plans/2026-07-22-firecrawl-cloud-migration-plan.md).
+6. Runs `firecrawl-setup.sh` first (ensures `~/.hermes/.env` has
+   `FIRECRAWL_API_KEY`/`FIRECRAWL_API_URL`). Hermes is the only consumer,
+   reading them for its `web.backend: firecrawl` search path. The firecrawl
+   CLI is deliberately not installed: agents reach Firecrawl through the
+   Composio MCP behind an isolated provider child.
    Runs hermes-setup.sh (Hermes install, product-operations venv build,
    restore bootstrap).
 7. Runs `agent-memory-setup.sh` to install the shared local memory CLI, stow the

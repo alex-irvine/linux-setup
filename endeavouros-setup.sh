@@ -583,12 +583,11 @@ for OLLAMA_MODEL in gpt-oss:20b qwen3-coder:30b-a3b-q4_K_M devstral:24b; do
 done
 
 ###########################################################
-# Firecrawl (installs firecrawl-cli, ensures FIRECRAWL_API_KEY/URL exist in
-# ~/.hermes/.env, seeds the CLI's own stored credentials). Runs before
-# opencode-setup.sh and hermes-setup.sh -- both are downstream consumers of
-# this credential (Hermes reads the env file directly; OpenCode's
-# firecrawl-* skills shell out to the CLI, authenticated via its stored
-# credentials). Safe to run before Hermes is installed -- see
+# Firecrawl credential (ensures FIRECRAWL_API_KEY/URL exist in ~/.hermes/.env).
+# Runs before hermes-setup.sh, the one downstream consumer: Hermes reads the
+# env file directly for its `web.backend: firecrawl` search path. The firecrawl
+# CLI is not installed; agents reach Firecrawl through the Composio MCP behind
+# an isolated provider child. Safe to run before Hermes is installed -- see
 # firecrawl-setup.sh's own comments for why it can't clobber Hermes's env.
 ###########################################################
 echo "==== Running firecrawl-setup.sh ===="

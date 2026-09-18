@@ -45,7 +45,10 @@ EOF
   chmod +x "$bindir/npm"
 }
 
-test_seeds_credentials_when_cli_already_installed() {
+# The firecrawl CLI is deliberately not installed any more: agents reach
+# Firecrawl through the Composio MCP behind an isolated provider child. This
+# script provisions only the credential Hermes reads for web.backend: firecrawl.
+test_never_installs_or_logs_in() {
   local tmp
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
@@ -53,6 +56,7 @@ test_seeds_credentials_when_cli_already_installed() {
   mkdir -p "$tmp/bin"
   hermetic_bin "$tmp/bin"
   printf 'FIRECRAWL_API_KEY=fc-testkey123\n' >"$tmp/env"
+  # Both binaries are present and recording: the script must call neither.
   fake_firecrawl "$tmp/bin" "$tmp/firecrawl-calls"
   cat >"$tmp/bin/npm" <<EOF
 #!/usr/bin/env bash
@@ -67,36 +71,21 @@ EOF
   set -e
 
   [[ $rc -eq 0 ]]
-  [[ ! -e "$tmp/npm-calls" ]] # already installed -- npm must NOT be invoked
-  grep -q '^login --api-key fc-testkey123$' "$tmp/firecrawl-calls"
+  [[ ! -e "$tmp/npm-calls" ]]        # never installs the CLI
+  [[ ! -e "$tmp/firecrawl-calls" ]]  # never seeds CLI credentials
   grep -q '^FIRECRAWL_API_URL=https://api.firecrawl.dev$' "$tmp/env"
-  assert_contains "$output" "seeding"
+  grep -q '^FIRECRAWL_API_KEY=fc-testkey123$' "$tmp/env"
   assert_contains "$output" "complete"
 }
 
-test_installs_cli_via_npm_when_missing() {
+test_works_without_npm_or_cli_present() {
   local tmp
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
 
   mkdir -p "$tmp/bin"
-  hermetic_bin "$tmp/bin"
+  hermetic_bin "$tmp/bin"   # no npm, no firecrawl on PATH at all
   printf 'FIRECRAWL_API_KEY=fc-testkey123\n' >"$tmp/env"
-  # npm "install"s firecrawl by writing the fake binary itself, simulating a real -g install.
-  cat >"$tmp/bin/npm" <<EOF
-#!/usr/bin/env bash
-printf '%s\n' "\$*" >>"$tmp/npm-calls"
-if [[ "\$*" == *"install -g firecrawl-cli"* ]]; then
-  cat >"$tmp/bin/firecrawl" <<'INNER'
-#!/usr/bin/env bash
-printf '%s\n' "\$*" >>"$tmp/firecrawl-calls"
-exit 0
-INNER
-  chmod +x "$tmp/bin/firecrawl"
-fi
-exit 0
-EOF
-  chmod +x "$tmp/bin/npm"
 
   set +e
   output="$(PATH="$tmp/bin" FIRECRAWL_ENV_FILE="$tmp/env" FIRECRAWL_SETUP_INTERACTIVE=0 "$SUT" 2>&1 </dev/null)"
@@ -104,9 +93,7 @@ EOF
   set -e
 
   [[ $rc -eq 0 ]]
-  grep -q 'install -g firecrawl-cli' "$tmp/npm-calls"
-  grep -q '^login --api-key fc-testkey123$' "$tmp/firecrawl-calls"
-  assert_contains "$output" "installing firecrawl-cli"
+  assert_contains "$output" "complete"
 }
 
 test_no_key_yet_soft_skips() {
@@ -170,9 +157,8 @@ test_prompts_and_saves_key_when_interactive() {
 
   [[ $rc -eq 0 ]]
   grep -q '^FIRECRAWL_API_KEY=fc-prompted999$' "$tmp/env" # entered value landed, live (not commented)
-  grep -q '^login --api-key fc-prompted999$' "$tmp/firecrawl-calls"
+  [[ ! -e "$tmp/firecrawl-calls" ]] # the credential is provisioned, never seeded into a CLI
   assert_contains "$output" "saved FIRECRAWL_API_KEY"
-  assert_contains "$output" "seeding"
   assert_contains "$output" "complete"
 }
 
@@ -198,8 +184,8 @@ test_interactive_blank_input_soft_skips() {
   assert_contains "$output" "no FIRECRAWL_API_KEY set"
 }
 
-test_seeds_credentials_when_cli_already_installed
-test_installs_cli_via_npm_when_missing
+test_never_installs_or_logs_in
+test_works_without_npm_or_cli_present
 test_no_key_yet_soft_skips
 test_preserves_existing_env_file_content
 test_prompts_and_saves_key_when_interactive
