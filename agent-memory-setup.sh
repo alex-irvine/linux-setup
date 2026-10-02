@@ -21,6 +21,11 @@ test -d "$DOTFILES/systemd" || die "missing dotfiles systemd package: $DOTFILES/
 
 mkdir -p "$HOME/.local/bin" "$HOME/.config/agent-memory" "$AGENT_MEMORY_HOME"
 chmod 700 "$HOME/.config/agent-memory" "$AGENT_MEMORY_HOME"
+if [ -f "$HOME/.config/agent-memory/openrouter.env" ]; then
+  set -a
+  . "$HOME/.config/agent-memory/openrouter.env"
+  set +a
+fi
 
 uv sync --locked --project "$PROJECT" || die "locked memoryctl installation failed; run uv sync --locked --project $PROJECT"
 test -x "$MEMORYCTL" || die "memoryctl was not installed at $MEMORYCTL"

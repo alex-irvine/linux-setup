@@ -69,6 +69,30 @@ def test_search_regenerates_bad_vectors_and_falls_back_when_embedding_is_bad(tmp
     assert service.search(SearchQuery("vector")).semantic_status == "unavailable"
 
 
+def test_search_reembeds_when_the_embedding_model_changes(tmp_path):
+    from agent_memory.index import MemoryIndex
+    from agent_memory.model import AddRequest, SearchQuery
+    from agent_memory.store import MarkdownStore, MemoryService
+
+    home, vault = tmp_path / "state", tmp_path / "vault"
+    service = MemoryService(MarkdownStore(vault, home), MemoryIndex(home / "index.sqlite3"))
+    record = service.add(AddRequest("fixture", "fact", "global", "vector fixture"))
+    service.index.remember_embeddings([record], [[1.0, 0.0]], "nomic-embed-text")
+    calls = []
+
+    def embed(texts):
+        calls.append(list(texts))
+        return EmbeddingBatch([[1.0, 0.0] for _ in texts], "fallback", "openai/text-embedding-3-small")
+
+    service.ollama.embed = embed
+    assert service.search(SearchQuery("vector")).semantic_status == "available"
+    assert calls == [["vector"], [record.content]]
+    assert service.index.embeddings([record])[str(record.id)][1] == "openai/text-embedding-3-small"
+    calls.clear()
+    assert service.search(SearchQuery("vector")).semantic_status == "available"
+    assert calls == [["vector"]]
+
+
 def test_ranking_boosts_are_bounded_and_do_not_reorder_rrf_scores(tmp_path):
     from agent_memory.index import MemoryIndex
     from agent_memory.model import AddRequest, SearchQuery, SearchResult

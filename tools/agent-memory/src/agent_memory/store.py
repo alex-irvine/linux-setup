@@ -566,14 +566,16 @@ class MemoryService:
         if not isinstance(embedded, DegradedStatus) and self._valid_vectors(embedded.vectors, 1):
             vectors = self.index.embeddings(candidates)
             dimensions = len(embedded.vectors[0])
-            incompatible = [memory_id for memory_id, vector in vectors.items() if len(vector) != dimensions]
+            incompatible = [memory_id for memory_id, (vector, model) in vectors.items()
+                            if len(vector) != dimensions or model != embedded.model]
             self.index.remove_embeddings(incompatible)
-            vectors = {memory_id: vector for memory_id, vector in vectors.items() if memory_id not in incompatible}
+            vectors = {memory_id: vector for memory_id, (vector, _) in vectors.items() if memory_id not in incompatible}
             missing = [record for record in candidates if str(record.id) not in vectors]
             if missing:
                 generated = self.ollama.embed([record.content for record in missing])
-                if not isinstance(generated, DegradedStatus) and self._valid_vectors(generated.vectors, len(missing), dimensions):
-                    self.index.remember_embeddings(missing, generated.vectors)
+                if (not isinstance(generated, DegradedStatus) and generated.model == embedded.model
+                        and self._valid_vectors(generated.vectors, len(missing), dimensions)):
+                    self.index.remember_embeddings(missing, generated.vectors, generated.model)
                     vectors.update({str(record.id): vector for record, vector in zip(missing, generated.vectors)})
             if vectors:
                 semantic_status = "available"
@@ -694,7 +696,7 @@ class MemoryService:
                     active += 1
         embedded = self.ollama.embed([record.content for record in records])
         if not isinstance(embedded, DegradedStatus):
-            self.index.remember_embeddings(records, embedded.vectors)
+            self.index.remember_embeddings(records, embedded.vectors, embedded.model)
         for memory_id, counts in self.store.feedback_results().items():
             self.index.set_feedback(memory_id, counts["positive"], counts["negative"])
         return RebuildReport(active, invalid)

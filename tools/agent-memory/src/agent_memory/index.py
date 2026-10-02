@@ -38,7 +38,7 @@ class MemoryIndex:
                 CREATE TABLE IF NOT EXISTS admin_operations (
                     request_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, result_json TEXT NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS embeddings (id TEXT PRIMARY KEY, vector TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS embeddings (id TEXT PRIMARY KEY, vector TEXT NOT NULL, model TEXT NOT NULL DEFAULT '');
             """)
             self._migrate(connection)
 
@@ -54,6 +54,9 @@ class MemoryIndex:
             connection.execute("ALTER TABLE memories ADD COLUMN source_session TEXT NOT NULL DEFAULT 'unknown'")
         if "supersedes" not in memory_columns:
             connection.execute("ALTER TABLE memories ADD COLUMN supersedes TEXT NOT NULL DEFAULT '[]'")
+        embedding_columns = {row[1] for row in connection.execute("PRAGMA table_info(embeddings)")}
+        if "model" not in embedding_columns:
+            connection.execute("ALTER TABLE embeddings ADD COLUMN model TEXT NOT NULL DEFAULT ''")
         idempotency_columns = {row[1] for row in connection.execute("PRAGMA table_info(idempotency)")}
         if "result_id" in idempotency_columns:
             connection.execute("ALTER TABLE idempotency RENAME TO legacy_idempotency")
@@ -100,21 +103,21 @@ class MemoryIndex:
             connection.execute("DELETE FROM excluded_paths")
             connection.execute("DELETE FROM embeddings")
 
-    def remember_embeddings(self, records: list[MemoryRecord], vectors: list[list[float]]) -> None:
+    def remember_embeddings(self, records: list[MemoryRecord], vectors: list[list[float]], model: str = "") -> None:
         with self._connect() as connection:
-            connection.executemany("INSERT OR REPLACE INTO embeddings VALUES (?, ?)",
-                                   [(str(record.id), json.dumps(vector, separators=(",", ":")))
+            connection.executemany("INSERT OR REPLACE INTO embeddings (id, vector, model) VALUES (?, ?, ?)",
+                                   [(str(record.id), json.dumps(vector, separators=(",", ":")), model)
                                      for record, vector in zip(records, vectors)])
 
-    def embeddings(self, records: list[MemoryRecord]) -> dict[str, list[float]]:
+    def embeddings(self, records: list[MemoryRecord]) -> dict[str, tuple[list[float], str]]:
         if not records:
             return {}
         with self._connect() as connection:
-            rows = connection.execute("SELECT id, vector FROM embeddings WHERE id IN (%s)" % ",".join("?" * len(records)), [str(record.id) for record in records]).fetchall()
+            rows = connection.execute("SELECT id, vector, model FROM embeddings WHERE id IN (%s)" % ",".join("?" * len(records)), [str(record.id) for record in records]).fetchall()
         values = {}
-        for memory_id, vector in rows:
+        for memory_id, vector, model in rows:
             try:
-                values[memory_id] = [float(value) for value in json.loads(vector)]
+                values[memory_id] = ([float(value) for value in json.loads(vector)], model)
             except (TypeError, ValueError, json.JSONDecodeError):
                 continue
         return values

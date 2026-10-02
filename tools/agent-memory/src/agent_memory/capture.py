@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .git_sync import GitSync, VAULT_RELPATH
-from .model import AddRequest, ListQuery, MEMORY_SCOPES, MEMORY_TYPES, UpdateRequest, normalize_content, utc_now
+from .model import AddRequest, ListQuery, MEMORY_SCOPES, MEMORY_TYPES, MemoryError, UpdateRequest, normalize_content, utc_now
 from .ollama import DegradedStatus
 from .rank import cosine
 
@@ -226,6 +226,8 @@ class Worker:
                     if sync.pushed: self.service.store.acknowledge_sync()
                     retry = sync.retryable
                     if retry: report["retrying"] += 1
+            except MemoryError as error:
+                report["rejected_by_reason"].append(error.code)
             except (OSError, ValueError, RuntimeError) as error:
                 retry = True; report["retrying"] += 1
             self.outbox.finish(path, envelope, retry)
