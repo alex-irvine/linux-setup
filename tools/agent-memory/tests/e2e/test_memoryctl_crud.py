@@ -153,6 +153,29 @@ def test_cli_and_mcp_share_one_canonical_record(tmp_path, run_cli, mcp_client):
     assert invalid_scope["error"]["code"] == "invalid_scope"
 
 
+def test_update_writes_through_stowed_note_symlink(tmp_path, run_cli):
+    env = {"AGENT_MEMORY_HOME": str(tmp_path / "state"),
+           "AGENT_MEMORY_VAULT": str(tmp_path / "vault")}
+    created = run_cli(env, "add", "--request-id", "req-symlink-add", "--type", "fact",
+                      "--scope", "global", "--content", "Stowed notes stay symlinks.")
+    note = tmp_path / "vault" / "Global" / f"{created['result']['id']}.md"
+    target = tmp_path / "dotfiles" / "Global" / f"{created['result']['id']}.md"
+    target.parent.mkdir(parents=True)
+    target.write_text(note.read_text(encoding="utf-8"), encoding="utf-8")
+    note.unlink()
+    note.symlink_to(target)
+
+    updated = run_cli(env, "update", "--id", created["result"]["id"],
+                      "--expected-revision", str(created["result"]["revision"]),
+                      "--expected-content-hash", created["result"]["content_hash"],
+                      "--request-id", "req-symlink-update",
+                      "--content", "Content updated through the link.")["result"]
+
+    assert updated["revision"] == 2
+    assert note.is_symlink()
+    assert "Content updated through the link." in target.read_text(encoding="utf-8")
+
+
 def test_cli_uses_canonical_default_paths(tmp_path, run_cli):
     home = tmp_path / "home"
     created = run_cli({"HOME": str(home)}, "add", "--request-id", "req-default-paths",

@@ -239,6 +239,11 @@ class MarkdownStore:
         destination = self._path_for(record)
         destination.parent.mkdir(parents=True, exist_ok=True)
         existing = existing or self._path(record.id)
+        if existing == destination and existing.is_symlink():
+            # A stowed vault presents notes through symlinks; rename replaces
+            # the link itself, so write through to the link target instead.
+            existing = existing.resolve()
+            destination = existing
         write_parent = existing.parent if existing.exists() else destination.parent
         descriptor, temporary = tempfile.mkstemp(prefix=f".{record.id}.", dir=write_parent)
         try:
