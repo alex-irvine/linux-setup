@@ -14,7 +14,7 @@ echo "==== Installing base tools ===="
 sudo pacman -S --noconfirm --needed \
   base-devel curl wget gnupg ca-certificates unzip clang pkgconf git github-cli \
   git-delta tailscale fzf doxx zoxide \
-  sway waybar wofi ghostty mako swaylock swayidle xorg-xwayland \
+  sway waybar wofi foot mako swaylock swayidle xorg-xwayland \
   wl-clipboard pipewire pipewire-pulse wireplumber pulsemixer \
   xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr \
   bluez bluez-utils network-manager-applet pulsemixer stow rclone \
@@ -65,10 +65,10 @@ echo "==== Cloning repos ===="
 bash "$SCRIPT_DIR/clone-repos.sh"
 
 echo "==== Clearing default configs that conflict with stow ===="
-# sway/ghostty/mako/nvim auto-create config dirs on first launch; clear
+# sway/foot/mako/nvim auto-create config dirs on first launch; clear
 # them so stow can take over. Also drop the stale per-tool config
 # files at $HOME root. Skip anything already symlinked (re-run safe).
-for d in ~/.config/sway ~/.config/mako ~/.config/ghostty \
+for d in ~/.config/sway ~/.config/mako ~/.config/foot \
   ~/.config/nvim ~/.config/tmuxinator \
   ~/.config/gtk-3.0 ~/.config/gtk-4.0 \
   ~/.config/evolution/sources ~/.config/evolution/signatures \
@@ -82,7 +82,7 @@ done
 
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow agents evolution ghostty git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator waybar zsh
+stow --target="$HOME" --restow agents evolution foot git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator waybar zsh
 stow --no-folding --target="$HOME" --restow claude
 cd -
 
@@ -346,7 +346,7 @@ echo "==== Installing yazi ===="
 # yazi core + previewer deps:
 #   resvg: SVG (yazi's svg previewer calls the `resvg` CLI, not rsvg-convert).
 #   ttf-jetbrains-mono-nerd: satisfies yazi's nerd-fonts group dep non-interactively
-#     (matches the Ghostty font choice).
+#     (matches the terminal font choice).
 #   jq/p7zip/zoxide: yazi optdeps for json/archive previewers + cd-history.
 #   chafa: terminal image rendering support.
 #   ffmpegthumbnailer/imagemagick/poppler/mediainfo/bat: thumbnailers + viewers
