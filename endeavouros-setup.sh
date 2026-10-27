@@ -84,6 +84,9 @@ echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
 stow --target="$HOME" --restow agents evolution foot git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator waybar zsh
 stow --no-folding --target="$HOME" --restow claude
+# ~/.codex holds Codex's own auth, sessions and caches, so only the tracked
+# files are linked into it.
+stow --no-folding --target="$HOME" --restow codex
 cd -
 
 echo "==== Setting dark color-scheme (dconf) ===="
@@ -598,6 +601,15 @@ bash "$SCRIPT_DIR/firecrawl-setup.sh"
 ###########################################################
 echo "==== Running opencode-setup.sh ===="
 bash "$SCRIPT_DIR/opencode-setup.sh"
+
+###########################################################
+# Codex (OpenAI coding agent)
+#
+# Rules, subagents, hooks, and isolated provider children
+# come from the dotfiles `codex` package stowed above.
+###########################################################
+echo "==== Running codex-setup.sh ===="
+bash "$SCRIPT_DIR/codex-setup.sh"
 
 echo "==== Running hermes-setup.sh ===="
 bash "$SCRIPT_DIR/hermes-setup.sh"

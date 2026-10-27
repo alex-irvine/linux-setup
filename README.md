@@ -28,7 +28,7 @@ Sudo password cached for pacman/yay.
 1. pacman base tools + `github-cli` → `gh auth login` (gates dotfiles clone).
 2. Clones `~/dotfiles` and stows every package (sway, foot, mako, nvim,
    tmux, tmuxinator, waybar, zsh, gtk, systemd, git, k9s, lazygit,
-   **agents**, **claude**, **opencode**, **hermes**).
+   **agents**, **claude**, **opencode**, **codex**, **hermes**).
 3. Installs apps + CLIs: yay, Go, Node, Neovim, Nerd Fonts, Rust,
    tree-sitter, Oh My Zsh, tmux + tpm, Chrome, Docker, kubectl, helm,
    k9s, flux, bottom, earlyoom, Evolution + ews, git/gh, lazygit, tig,
@@ -44,6 +44,12 @@ Sudo password cached for pacman/yay.
    reading them for its `web.backend: firecrawl` search path. The firecrawl
    CLI is deliberately not installed: agents reach Firecrawl through the
    Composio MCP behind an isolated provider child.
+   Runs `opencode-setup.sh`, then `codex-setup.sh` — installs the official
+   Codex CLI (`openai-codex` from `extra`), signs it in, and authorizes the
+   Composio MCP for the isolated `codex-provider-agent` child. Provider MCPs
+   are never registered in `~/.codex/config.toml`; the dotfiles `codex`
+   package supplies the rules, subagents, hooks, and provider children. Trust
+   the stowed hooks once with `/hooks` inside Codex.
    Runs hermes-setup.sh (Hermes install, product-operations venv build,
    restore bootstrap).
 7. Runs `agent-memory-setup.sh` to install the shared local memory CLI, stow the
