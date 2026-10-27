@@ -672,6 +672,19 @@ systemctl --user daemon-reload || true
 systemctl --user enable --now open-design.service || true
 systemctl --user status open-design.service --no-pager || true
 
+###########################################################
+# Downloads cleanup (systemd user timer)
+#
+# Review pages attached to ClickUp tickets open as downloads, so ~/Downloads
+# keeps growing. A persistent daily timer deletes anything that arrived there
+# more than 30 days ago. Units are stowed from the dotfiles `systemd` package
+# above; here we only enable the timer.
+###########################################################
+echo "==== Downloads cleanup timer ===="
+systemctl --user daemon-reload || true
+systemctl --user enable --now downloads-cleanup.timer || true
+systemctl --user list-timers downloads-cleanup.timer --all || true
+
 if ! rclone listremotes 2>/dev/null | grep -qx "gdrive:"; then
   cat <<'RCLONE_HELP'
 Hermes backup remote not configured yet. Run once after setup:
