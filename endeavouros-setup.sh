@@ -659,7 +659,7 @@ systemctl --user list-timers hermes-backup.timer --all || true
 # Automation watchdog (systemd user timer)
 #
 # Checks Hermes-cron jobs (~/.hermes/cron/jobs.json) and this repo's systemd
-# --user timers (currently hermes-backup.timer and itself) every 4h for
+# --user timers (hermes-backup, production-error-tickets and itself) every 4h for
 # vanished/failing/stale state, notifying locally via notify-send with a fix
 # command already in the body. Exists because hermes-backup-gdrive's
 # Hermes-cron job disappeared silently on 2026-07-21 with no signal in
@@ -669,6 +669,21 @@ systemctl --user list-timers hermes-backup.timer --all || true
 echo "==== Automation watchdog ===="
 bash "$SCRIPT_DIR/automation-watchdog/install-automation-watchdog.sh"
 systemctl --user list-timers automation-watchdog.timer --all || true
+
+###########################################################
+# Production error tickets (systemd user timer)
+#
+# Daily at 08:45 UTC (after the ClickUp MCP daily cap resets) runs
+# `claude -p "/ticketing-production-errors"`: the dotfiles skill that turns the
+# previous day's Collab Plan errors (Better Stack) and Clarity frustration into
+# ClickUp bugs, once each. Persistent=true catches up after suspend. The
+# service skips itself until ~/.local/bin/claude and ~/Proj/.triage/state
+# exist, so it is safe before claude-setup.sh and clone-repos.sh have run.
+# ERROR_TICKETS_MODE in ~/Proj/.triage/config.env picks dry-run or live.
+###########################################################
+echo "==== Production error tickets ===="
+bash "$SCRIPT_DIR/production-error-tickets/install-production-error-tickets.sh"
+systemctl --user list-timers production-error-tickets.timer --all || true
 
 ###########################################################
 # Open Design daemon (systemd user service)

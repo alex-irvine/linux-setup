@@ -148,7 +148,7 @@ if not dry_run:
 PY
 }
 
-TRACKED_TIMERS=(hermes-backup automation-watchdog)
+TRACKED_TIMERS=(hermes-backup automation-watchdog production-error-tickets)
 
 check_systemd_timers() {
   if ! systemctl --user list-units --no-legend >/dev/null 2>&1; then

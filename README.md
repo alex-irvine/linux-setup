@@ -224,3 +224,29 @@ automation-watchdog             # normal run (silent if healthy)
 ```
 
 Logs: `~/.local/share/automation-watchdog/watchdog.log`
+
+## Production error tickets
+
+A systemd user timer (`production-error-tickets.timer`) runs every day at
+08:45 UTC, after the ClickUp MCP daily cap resets, and catches up after
+suspend. It runs `claude -p "/ticketing-production-errors"`, the dotfiles
+skill that reads the previous day's Collab Plan production errors from Better
+Stack and frustration signals from Clarity, ignores user-handled exceptions
+(permission and validation answers), and raises at most five ClickUp bugs for
+problems no ticket covers yet. The automation watchdog tracks this timer.
+
+Installed by `endeavouros-setup.sh` via
+`production-error-tickets/install-production-error-tickets.sh`. The service
+skips itself until `~/.local/bin/claude` and `~/Proj/.triage/state` exist.
+
+Settings are the `ERROR_TICKETS_*` keys in `~/Proj/.triage/config.env`;
+`ERROR_TICKETS_MODE=dry-run` records what it would create instead of creating
+it (the default when the key is missing). Each run's result is in
+`~/Proj/.triage/state/error-tickets.json`.
+
+Manual run and logs:
+
+```sh
+systemctl --user start production-error-tickets.service
+journalctl --user -u production-error-tickets -n 50
+```

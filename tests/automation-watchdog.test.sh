@@ -135,6 +135,10 @@ if [[ "\$1" == "--user" && "\$2" == "show" ]]; then
     *:automation-watchdog.timer:ActiveState) echo "active" ;;
     *:automation-watchdog.timer:NextElapseUSecRealtime) echo "Tue 2099-01-01 00:00:00 UTC" ;;
     *:automation-watchdog.service:Result) echo "success" ;;
+    *:production-error-tickets.timer:UnitFileState) echo "enabled" ;;
+    *:production-error-tickets.timer:ActiveState) echo "active" ;;
+    *:production-error-tickets.timer:NextElapseUSecRealtime) echo "Tue 2099-01-01 08:45:00 UTC" ;;
+    *:production-error-tickets.service:Result) echo "success" ;;
     *) echo "" ;;
   esac
   exit 0

@@ -1,0 +1,14 @@
+[Unit]
+Description=Raise ClickUp bugs for yesterday's Collab Plan production errors (Better Stack + Clarity)
+ConditionPathExists=%h/.local/bin/claude
+ConditionPathIsDirectory=%h/Proj/.triage/state
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Proj
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/claude -p "/ticketing-production-errors" --permission-mode bypassPermissions
+TimeoutStartSec=1800
+Nice=10

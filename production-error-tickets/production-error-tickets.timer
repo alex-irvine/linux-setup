@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily production error tickets (08:45 UTC, after the ClickUp MCP daily cap resets; persistent; catches up after suspend/resume)
+
+[Timer]
+OnCalendar=*-*-* 08:45:00 UTC
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
