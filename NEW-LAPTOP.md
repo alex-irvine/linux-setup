@@ -68,6 +68,10 @@ agent-created skills.
 
 ## After restore
 
+- ClickUp tasks: rerun `bash "$HOME/Proj/linux-setup/bugwarrior-setup.sh"` in a
+  terminal if setup ran noninteractively, and enter your API key privately.
+  The key is not restored by Stow or Hermes backups. Run `bugwarrior pull`,
+  then `cu` in zsh; dotfiles restores your assignee and five-status filter.
 - Named Hermes profiles: `hermes import` itself prints a reminder —
   `hermes -p <profile> gateway install` for each one that needs it.
 - Root/default profile: handled automatically by `restore-hermes.sh` (see

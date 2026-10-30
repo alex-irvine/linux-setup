@@ -80,9 +80,13 @@ for f in ~/.zshrc ~/.tmux.conf ~/.taskrc \
   [ -L "$f" ] || rm -f "$f"
 done
 
+echo "==== Installing Bugwarrior and stowing task configuration ===="
+# Migrate an existing inline ClickUp key outside dotfiles before Stow sees it.
+bash "$SCRIPT_DIR/bugwarrior-setup.sh"
+
 echo "==== Stowing dotfiles ===="
 cd ~/dotfiles
-stow --target="$HOME" --restow agents evolution foot git gtk k9s lazydiff lazygit mako nvim opencode sway systemd task tmux tmuxinator waybar zsh
+stow --target="$HOME" --restow agents evolution foot git gtk k9s lazydiff lazygit mako nvim opencode sway systemd tmux tmuxinator waybar zsh
 stow --no-folding --target="$HOME" --restow claude
 # ~/.codex holds Codex's own auth, sessions and caches, so only the tracked
 # files are linked into it.

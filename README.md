@@ -29,6 +29,9 @@ Sudo password cached for pacman/yay.
 2. Clones `~/dotfiles` and stows every package (sway, foot, mako, nvim,
    tmux, tmuxinator, waybar, zsh, gtk, systemd, git, k9s, lazygit,
    **agents**, **claude**, **opencode**, **codex**, **hermes**).
+   Installs Bugwarrior with its pinned Python environment and the ClickUp
+   compatibility plugin from dotfiles, then stows the `task` package. Existing
+   inline API keys are moved to private local storage before Stow runs.
 3. Installs apps + CLIs: yay, Go, Node, Neovim, Nerd Fonts, Rust,
    tree-sitter, Oh My Zsh, tmux + tpm, Chrome, Docker, kubectl, helm,
    k9s, flux, bottom, earlyoom, Evolution + ews, git/gh, lazygit, tig,
@@ -107,6 +110,36 @@ timer drains the durable capture queue. No hosted credential is required.
 - `popos-setup.sh` — legacy Pop!_OS variant.
 - `fix-suspend.sh` — laptop suspend tweaks.
 - `setup-vpn.sh` — imports OpenVPN profile into NetworkManager. Called by main; safe standalone.
+- `bugwarrior-setup.sh` — installs Bugwarrior, migrates a local ClickUp key, and stows task configuration. Called by main; safe standalone.
+
+## ClickUp task list
+
+Run the standalone installer to install or restore Bugwarrior without repeating
+the full OS setup:
+
+```sh
+bash "$HOME/Proj/linux-setup/bugwarrior-setup.sh"
+bugwarrior pull
+cu
+cu Ready For QA
+```
+
+On a fresh machine the installer prompts for the API key with input hidden.
+The key is saved only in private local storage, outside the Stow package; it is
+never written to dotfiles. Noninteractive installation skips the prompt and
+prints a reminder to rerun the installer in a terminal. Re-runs preserve an
+existing key and refuse to replace it with a different legacy key.
+
+Dotfiles owns the assignee, five allowed statuses, priority compatibility fix,
+Taskwarrior report, and zsh helper. A task that moves to QA Passed disappears
+from the pending local list on the next pull without changing ClickUp.
+
+Verify a fresh install, legacy-key migration, safe re-runs, and the complete
+mocked ClickUp workflow in a temporary home (uses the uv dependency cache):
+
+```sh
+python3 tests/bugwarrior-setup.test.py -v
+```
 
 ## VPN
 
