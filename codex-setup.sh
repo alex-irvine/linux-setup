@@ -7,8 +7,9 @@ set -euo pipefail
 # Installs the official Codex CLI from the Arch `extra` repo and signs it in.
 #
 # ~/.codex config, rules, hooks, subagents, and provider children come from
-# the `codex` Stow package in ~/dotfiles; shared skills come from the `agents`
-# package. Both are applied by endeavouros-setup.sh; run that first.
+# the `codex` Stow package in ~/dotfiles. The `agents` package links Superpowers
+# skills from ~/Proj/super-mezzanine and keeps the other shared skills locally.
+# Both are applied by endeavouros-setup.sh after clone-repos.sh; run that first.
 #
 # Provider MCPs are never registered in ~/.codex/config.toml: Codex reaches
 # them through `codex-provider-agent`, which starts an isolated child per

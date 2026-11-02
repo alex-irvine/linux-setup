@@ -26,6 +26,16 @@ clone_or_pull() {
 echo "==== Cloning dotfiles ===="
 clone_or_pull https://github.com/alex-irvine/dotfiles.git ~/dotfiles
 
+echo "==== Cloning Superpowers skills ===="
+# Dotfiles stows directory links into this checkout. Clone it before Stow;
+# its installer is for standalone users and would compete with Stow ownership.
+clone_or_pull https://github.com/datascopesystems/super-mezzanine.git ~/Proj/super-mezzanine
+if [ ! -r "$HOME/Proj/super-mezzanine/skills/using-superpowers/SKILL.md" ] ||
+   [ ! -r "$HOME/Proj/super-mezzanine/runtimes/opencode/agents/superpowers.md" ]; then
+  echo "ERROR: Superpowers checkout is incomplete; refusing to continue to Stow" >&2
+  exit 1
+fi
+
 echo "==== Cloning .triage ===="
 clone_or_pull https://github.com/alex-irvine/.triage.git ~/Proj/.triage
 

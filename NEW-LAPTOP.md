@@ -9,6 +9,12 @@ Follow the main [README.md](README.md) bootstrap flow — `clone-repos.sh`,
 then `endeavouros-setup.sh`. This installs Hermes fresh, but on a genuinely
 new machine there's nothing to restore from yet (see step 2).
 
+`clone-repos.sh` also clones `~/Proj/super-mezzanine` before Stow runs. That
+checkout owns the Superpowers skills and OpenCode primary agent; dotfiles
+stows adapters into it. Keep the checkout in that location and update it with
+`git pull --ff-only`. Provider configuration and unrelated skills stay in
+dotfiles. Do not run the shared repository's standalone installer over Stow.
+
 ## 2. Configure Google Drive access (manual, every new machine)
 
 This is the one step that can never be automated: `rclone` needs your

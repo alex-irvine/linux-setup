@@ -54,7 +54,7 @@ echo "==== Installing /etc drop-ins ===="
 bash "$SCRIPT_DIR/apply-etc.sh"
 
 ###########################################################
-# Repo clones (dotfiles, .triage, tmux plugins)
+# Repo clones (dotfiles, Superpowers skills, .triage, tmux plugins)
 #
 # Lives in clone-repos.sh so a fresh OS install is one
 # `bash clone-repos.sh` away from being personalised. Must

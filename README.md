@@ -26,12 +26,16 @@ Sudo password cached for pacman/yay.
 ## What it does
 
 1. pacman base tools + `github-cli` → `gh auth login` (gates dotfiles clone).
-2. Clones `~/dotfiles` and stows every package (sway, foot, mako, nvim,
+2. Clones `~/dotfiles` and `~/Proj/super-mezzanine` before Stow. The latter
+   owns the 19 Superpowers workflow skills; dotfiles supplies directory links
+   and the OpenCode primary-agent adapter. It then stows every package (sway, foot, mako, nvim,
    tmux, tmuxinator, waybar, zsh, gtk, systemd, git, k9s, lazygit,
    **agents**, **claude**, **opencode**, **codex**, **hermes**).
    Installs Bugwarrior with its pinned Python environment and the ClickUp
    compatibility plugin from dotfiles, then stows the `task` package. Existing
    inline API keys are moved to private local storage before Stow runs.
+   Keep both clones. Update Superpowers with `git -C ~/Proj/super-mezzanine pull --ff-only`;
+   do not run its standalone installer over the Stow-managed adapters.
 3. Installs apps + CLIs: yay, Go, Node, Neovim, Nerd Fonts, Rust,
    tree-sitter, Oh My Zsh, tmux + tpm, Chrome, Docker, kubectl, helm,
    k9s, flux, bottom, earlyoom, Evolution + ews, git/gh, lazygit, tig,
