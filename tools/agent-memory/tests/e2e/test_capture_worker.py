@@ -29,8 +29,13 @@ def test_capture_rejects_raw_events_when_the_local_reviewer_is_unavailable(tmp_p
     # A restarted worker must recover the interrupted envelope before processing.
     report = run(env, "worker", "--drain")["result"]
     assert report["accepted"] == []
-    assert report["retrying"] == 1
+    # An unreachable reviewer is not the capture's fault: it waits without
+    # spending one of its attempts.
+    assert report["retrying"] == 0
+    assert "unreachable" in report["provider_unavailable"]
     assert run(env, "status")["result"]["outbox"]["ready"] == 1
+    waiting = next((tmp_path / "state" / "outbox" / "ready").glob("*.json"))
+    assert json.loads(waiting.read_text())["attempts"] == 0
 
 
 def test_concurrent_workers_claim_each_envelope_once(tmp_path):
@@ -42,7 +47,7 @@ def test_concurrent_workers_claim_each_envelope_once(tmp_path):
         stdout, stderr = worker.communicate(timeout=10)
         assert worker.returncode == 0, stderr or stdout
     counts = run(env, "status")["result"]["outbox"]
-    assert counts == {"ready": 0, "running": 0, "done": 4}
+    assert counts == {"ready": 0, "running": 0, "done": 4, "failed": 0}
 
 
 def test_worker_limit_processes_a_bounded_batch(tmp_path):
@@ -52,7 +57,7 @@ def test_worker_limit_processes_a_bounded_batch(tmp_path):
 
     report = run(env, "worker", "--limit", "3")["result"]
 
-    assert report["outbox"] == {"ready": 4, "running": 0, "done": 3}
+    assert report["outbox"] == {"ready": 4, "running": 0, "done": 3, "failed": 0}
 
 
 def test_completed_work_from_all_clients_is_saved_and_recovered_without_duplicates(tmp_path):

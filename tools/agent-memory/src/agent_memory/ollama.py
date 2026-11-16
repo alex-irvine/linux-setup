@@ -50,6 +50,23 @@ class OllamaClient:
                 self.provider = "fallback"
         return self.provider
 
+    def available(self) -> DegradedStatus | None:
+        """Return None when a provider answers, or why none does.
+
+        Uses the short probe timeout, so an unreachable host costs seconds
+        rather than one full request timeout per queued capture.
+        """
+        if self._select_provider() == "fallback":
+            return None
+        try:
+            with urlopen(f"{self.url}/api/tags", timeout=self.probe_timeout) as response:
+                response.read()
+        except HTTPError:
+            return None
+        except OSError as error:
+            return DegradedStatus(f"Ollama at {self.url} unreachable: {error}", fallback=True)
+        return None
+
     def _post_json(self, url: str, body: dict, timeout: float,
                    headers: dict | None = None) -> dict | DegradedStatus:
         request = Request(url, data=json.dumps(body).encode(),

@@ -182,7 +182,7 @@ def test_worker_drains_offline_capture_through_fallback(fallback, tmp_path):
     report = run("worker", "--drain")
 
     assert report["accepted"] == ["offline-1"]
-    assert report["outbox"] == {"ready": 0, "running": 0, "done": 1}
+    assert report["outbox"] == {"ready": 0, "running": 0, "done": 1, "failed": 0}
     assert any(path.endswith("/chat/completions") for path in fallback.paths)
     assert any(path.endswith("/embeddings") for path in fallback.paths)
     listed = run("list")
@@ -218,4 +218,4 @@ def test_worker_survives_idempotency_conflict_on_replayed_capture(fallback, tmp_
 
     assert report["rejected_by_reason"] == ["idempotency_conflict"]
     assert report["retrying"] == 0
-    assert report["outbox"] == {"ready": 0, "running": 0, "done": 2}
+    assert report["outbox"] == {"ready": 0, "running": 0, "done": 2, "failed": 0}

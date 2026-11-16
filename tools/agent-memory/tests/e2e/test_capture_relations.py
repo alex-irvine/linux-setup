@@ -152,3 +152,23 @@ def test_editing_a_memory_drops_its_cached_vector(tmp_path):
     assert service.index.embeddings([record])
     service.update(UpdateRequest(record.id, record.revision, record.content_hash, "edit", content="Edited public fact."))
     assert service.index.embeddings([record]) == {}
+
+
+def test_capture_that_keeps_failing_moves_to_failed_with_its_error(tmp_path, capsys):
+    from agent_memory.capture import MAX_ATTEMPTS
+    responses = {"capture": "not json", "relation": json.dumps({"relation": "distinct"}),
+                 "embed": lambda texts: [[1.0, 0.0] for _ in texts]}
+    with ollama(responses) as url:
+        service, _, outbox, runner = worker(tmp_path, url)
+        enqueue(outbox)
+        ready = next(outbox.ready.glob("*.json"))
+        envelope = json.loads(ready.read_text())
+        envelope["attempts"] = MAX_ATTEMPTS - 1
+        ready.write_text(json.dumps(envelope))
+        report = runner.run(True)
+        assert report["failed"] == 1 and report["retrying"] == 0
+        assert outbox.counts()["ready"] == 0 and outbox.counts()["failed"] == 1
+        failed = json.loads(next(outbox.failed.glob("*.json")).read_text())
+        assert failed["attempts"] == MAX_ATTEMPTS
+        assert failed["last_error"].startswith("RuntimeError: capture review")
+        assert "moved to outbox/failed" in capsys.readouterr().err

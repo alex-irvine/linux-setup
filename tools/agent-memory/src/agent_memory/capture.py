@@ -4,6 +4,7 @@ import fcntl
 import hashlib
 import json
 import os
+import sys
 import tempfile
 import time
 import re
@@ -14,6 +15,28 @@ from .git_sync import GitSync, VAULT_RELPATH
 from .model import AddRequest, ListQuery, MEMORY_SCOPES, MEMORY_TYPES, MemoryError, UpdateRequest, normalize_content, utc_now
 from .ollama import DegradedStatus
 from .rank import cosine
+
+
+# A capture or sync that fails this many times moves to outbox/failed with
+# its last error, instead of being retried every run forever.
+MAX_ATTEMPTS = 10
+
+
+class ProviderUnavailable(RuntimeError):
+    """The review or embedding provider cannot be reached; nothing is wrong with the capture."""
+
+
+def log(message: str) -> None:
+    print(f"agent-memory worker: {message}", file=sys.stderr, flush=True)
+
+
+def require(result, what: str):
+    """Pass a provider result through, or raise the error the worker retries on."""
+    if isinstance(result, DegradedStatus):
+        if result.fallback:
+            raise ProviderUnavailable(f"{what}: {result.reason}")
+        raise RuntimeError(f"{what}: {result.reason}")
+    return result
 
 
 def unsafe_reason(content: str) -> str | None:
@@ -70,9 +93,9 @@ def atomic_json(path: Path, value: dict) -> None:
 class Outbox:
     def __init__(self, home: Path) -> None:
         self.root = home / "outbox"
-        self.ready, self.running, self.done = (self.root / name for name in ("ready", "running", "done"))
+        self.ready, self.running, self.done, self.failed = (self.root / name for name in ("ready", "running", "done", "failed"))
         self.lock_path = self.root / "outbox.lock"
-        for path in (self.ready, self.running, self.done): path.mkdir(parents=True, exist_ok=True)
+        for path in (self.ready, self.running, self.done, self.failed): path.mkdir(parents=True, exist_ok=True)
 
     @contextmanager
     def locked(self):
@@ -106,11 +129,13 @@ class Outbox:
                     atomic_json(path, envelope)
                     self._move(path, self.ready / path.name)
 
-    def claim(self) -> tuple[Path, dict] | None:
+    def claim(self, kinds: set[str] | None = None) -> tuple[Path, dict] | None:
         with self.locked():
             candidates = sorted(self.ready.glob("*.json"), key=lambda path: json.loads(path.read_text(encoding="utf-8"))["created_at"])
             for path in candidates:
                 envelope = json.loads(path.read_text(encoding="utf-8"))
+                if kinds is not None and envelope["kind"] not in kinds:
+                    continue
                 if envelope["next_attempt_at"] <= time.time():
                     envelope["claimed_at"] = time.time()
                     atomic_json(path, envelope)
@@ -119,15 +144,19 @@ class Outbox:
                     return running, envelope
         return None
 
-    def finish(self, path: Path, envelope: dict, retry: bool = False) -> None:
+    def finish(self, path: Path, envelope: dict, retry: bool = False, error: str | None = None) -> str:
+        """Move a claimed envelope on and return where it went: done, ready or failed."""
         with self.locked():
             envelope.pop("claimed_at", None)
-            destination = self.ready / path.name if retry else self.done / path.name
+            state = "done"
             if retry:
                 envelope["attempts"] += 1
+                envelope["last_error"] = error
                 envelope["next_attempt_at"] = time.time() + min(300, 2 ** envelope["attempts"])
+                state = "failed" if envelope["attempts"] >= MAX_ATTEMPTS else "ready"
             atomic_json(path, envelope)
-            self._move(path, destination)
+            self._move(path, getattr(self, state) / path.name)
+            return state
 
     def release(self, path: Path, envelope: dict) -> None:
         with self.locked():
@@ -140,12 +169,13 @@ class Outbox:
             return any(json.loads(path.read_text(encoding="utf-8")).get("kind") == "sync" for directory in (self.ready, self.running) for path in directory.glob("*.json"))
 
     def counts(self) -> dict:
-        with self.locked(): return {name: len(list(path.glob("*.json"))) for name, path in (("ready", self.ready), ("running", self.running), ("done", self.done))}
+        with self.locked(): return {name: len(list(path.glob("*.json"))) for name, path in (("ready", self.ready), ("running", self.running), ("done", self.done), ("failed", self.failed))}
 
 
 class Worker:
     def __init__(self, service, home: Path, repo: Path | None = None) -> None:
         self.service, self.home, self.outbox, self.repo = service, home, Outbox(home), repo
+        self.provider_down = None
         self.outbox.recover()
 
     def _sync_payload(self) -> dict | None:
@@ -170,9 +200,11 @@ class Worker:
         evidence = payload["evidence"]
         if unsafe_reason(" ".join(str(value) for value in evidence.values())):
             report["rejected_by_reason"].append("unsafe_evidence"); return
-        review = self.service.ollama.review_capture(payload)
-        if isinstance(review, DegradedStatus):
-            raise RuntimeError("capture reviewer unavailable")
+        if self.provider_down is None:
+            self.provider_down = self.service.ollama.available() or False
+        if self.provider_down:
+            raise ProviderUnavailable(self.provider_down.reason)
+        review = require(self.service.ollama.review_capture(payload), "capture review")
         candidate, reason = reviewed_candidate(payload, review)
         if reason:
             report["rejected_by_reason"].append(reason); return
@@ -183,19 +215,14 @@ class Worker:
             report["rejected_by_reason"].append("low_confidence"); return
         records = self.service.list(ListQuery(status="active"))
         if any(normalize_content(record.content) == normalize_content(content) for record in records): report["rejected_by_reason"].append("duplicate"); return
-        similar = self.service.similar_vectors(content, records)
-        if isinstance(similar, DegradedStatus):
-            raise RuntimeError("capture embedding unavailable")
-        embedded, vectors = similar
+        embedded, vectors = require(self.service.similar_vectors(content, records), "capture embedding")
         for prior in records:
             vector = vectors.get(str(prior.id))
             if vector is None or cosine(embedded.vectors[0], vector) < 0.97:
                 continue
             if str(prior.id) in candidate["supersedes"]:
                 continue
-            relation = self.service.ollama.review_relation(content, prior.content)
-            if isinstance(relation, DegradedStatus):
-                raise RuntimeError("capture relation reviewer unavailable")
+            relation = require(self.service.ollama.review_relation(content, prior.content), "capture relation review")
             if relation == "duplicate":
                 report["rejected_by_reason"].append("semantic_duplicate"); return
         mapping = self.home / "capture-ids.json"
@@ -214,13 +241,16 @@ class Worker:
 
     def run(self, drain: bool, limit: int | None = None) -> dict:
         self.ensure_dirty_sync()
-        report = {"accepted": [], "rejected_by_reason": [], "sync": None, "retrying": 0, "accepted_sync_note": None}
+        report = {"accepted": [], "rejected_by_reason": [], "sync": None, "retrying": 0, "failed": 0,
+                  "provider_unavailable": None, "accepted_sync_note": None}
         processed = 0
+        kinds: set[str] | None = None
+        self.provider_down = None
         while True:
-            claimed = self.outbox.claim()
+            claimed = self.outbox.claim(kinds)
             if not claimed: break
             path, envelope = claimed
-            retry = False
+            retry, error_text = False, None
             try:
                 if envelope["kind"] == "capture": self._capture(envelope["payload"], report, envelope["id"])
                 else:
@@ -231,12 +261,25 @@ class Worker:
                     report["sync"] = sync.to_dict()
                     if sync.pushed: self.service.store.acknowledge_sync()
                     retry = sync.retryable
-                    if retry: report["retrying"] += 1
+                    if retry: report["retrying"] += 1; error_text = sync.error
+            except ProviderUnavailable as error:
+                # Not the capture's fault: it keeps its attempts and waits for
+                # the next run, while sync jobs still run in this one.
+                self.outbox.release(path, envelope)
+                report["provider_unavailable"] = str(error)
+                log(f"captures wait for the next run: {error}")
+                kinds = {"sync"}
+                continue
             except MemoryError as error:
                 report["rejected_by_reason"].append(error.code)
             except (OSError, ValueError, RuntimeError) as error:
-                retry = True; report["retrying"] += 1
-            self.outbox.finish(path, envelope, retry)
+                retry = True; report["retrying"] += 1; error_text = f"{type(error).__name__}: {error}"
+            state = self.outbox.finish(path, envelope, retry, error_text)
+            if retry:
+                log(f"{envelope['kind']} {envelope['id'][:12]} failed attempt {envelope['attempts']}/{MAX_ATTEMPTS}: {error_text}")
+                if state == "failed":
+                    report["retrying"] -= 1; report["failed"] += 1
+                    log(f"{envelope['kind']} {envelope['id'][:12]} moved to outbox/failed")
             processed += 1
             if (limit is not None and processed >= limit) or (limit is None and not drain): break
         report["outbox"] = self.outbox.counts()

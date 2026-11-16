@@ -70,6 +70,7 @@ def test_all_client_completed_work_events_require_reviewed_canonical_content(tmp
         labels = ("claude", "opencode", "codex", "hermes")
         return __import__("agent_memory.ollama", fromlist=["EmbeddingBatch"]).EmbeddingBatch([[float(next((index for index, label in enumerate(labels) if label in text), 0) == index) for index in range(len(labels))] for text in texts])
     service.ollama.embed = embed
+    service.ollama.available = lambda: None
     outbox = Outbox(home)
     for client in ("claude", "opencode", "codex", "hermes"):
         outbox.enqueue("capture", {"id": client, "version": 1, "event": "completed_work", "client": client,
