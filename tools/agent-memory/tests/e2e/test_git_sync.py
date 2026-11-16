@@ -42,12 +42,14 @@ def test_sync_commits_only_memory_and_preserves_user_index(git_fixture):
     git(repo, "add", "opencode/config.jsonc")
     (repo / "hermes").mkdir()
     (repo / "hermes/config.yaml").write_text("unstaged-user-change", encoding="utf-8")
-    before_index = git(repo, "write-tree").stdout
     created = memory(repo, env, "add", "--request-id", "a", "--type", "fact", "--scope", "global", "--content", "a")
     report = memory(repo, env, "worker", "--drain")
     assert report["sync"]["commit_created"] is True
     assert git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").stdout.splitlines() == ["agents/.agents/memory/Global/" + created["id"] + ".md"]
-    assert git(repo, "write-tree").stdout == before_index
+    # The user's staged change stays staged; the committed note is not left
+    # staged for deletion.
+    assert git(repo, "diff", "--cached", "--name-only").stdout.splitlines() == ["opencode/config.jsonc"]
+    assert git(repo, "status", "--porcelain", "--", "agents").stdout == ""
     assert (repo / "hermes/config.yaml").read_text(encoding="utf-8") == "unstaged-user-change"
     assert git(remote, "rev-parse", "main").stdout == git(repo, "rev-parse", "HEAD").stdout
 

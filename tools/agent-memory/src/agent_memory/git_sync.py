@@ -48,6 +48,13 @@ class GitSync:
                 return name
         return None
 
+    @classmethod
+    def _index_outside(cls, repo: Path, vault_relpath: Path) -> list[str]:
+        """Index entries outside the vault: what a sync must leave as it found it."""
+        prefix = f"{vault_relpath.as_posix().rstrip('/')}/"
+        return [line for line in cls._git(repo, "ls-files", "--stage", "-z").stdout.split("\0")
+                if line and not line.split("\t", 1)[-1].startswith(prefix)]
+
     @staticmethod
     def _worktree_snapshot(repo: Path, vault: Path) -> dict[str, tuple]:
         snapshot = {}
@@ -100,6 +107,7 @@ class GitSync:
                     if path.suffix == ".md" and path.is_file():
                         frontmatter.load(path.read_text(encoding="utf-8"))
                 before_index = self._git(repo, "write-tree").stdout.strip()
+                before_others = self._index_outside(repo, vault_relpath)
                 before_worktree = self._worktree_snapshot(repo, vault)
                 if changed:
                     self._git(repo, "add", "--intent-to-add", "--", str(vault_relpath))
@@ -111,12 +119,15 @@ class GitSync:
                         return SyncReport(error=committed.stderr.strip() or committed.stdout.strip(), retryable=True,
                                           restoration_error=(restored.stderr.strip() or restored.stdout.strip()) if restored.returncode else None)
                     commit_created = True
-                    restored = self._git(repo, "restore", "--staged", f"--source={before_index}", "--", str(vault_relpath), check=False)
+                    # The vault's index now matches the commit. Restoring it to
+                    # the pre-commit index staged every committed note for
+                    # deletion, for the next plain `git commit` to remove.
+                    restored = self._git(repo, "restore", "--staged", "--source=HEAD", "--", str(vault_relpath), check=False)
                     if restored.returncode:
                         return SyncReport(commit_created, error="index restoration failed", retryable=True,
                                           restoration_error=restored.stderr.strip() or restored.stdout.strip())
                     index_touched = False
-                if self._git(repo, "write-tree").stdout.strip() != before_index or self._worktree_snapshot(repo, vault) != before_worktree:
+                if self._index_outside(repo, vault_relpath) != before_others or self._worktree_snapshot(repo, vault) != before_worktree:
                     return SyncReport(commit_created, error="unrelated Git index or worktree changed", retryable=True)
                 pushed = self._push_upstream(repo)
                 if pushed.returncode:
