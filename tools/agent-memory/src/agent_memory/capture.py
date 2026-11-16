@@ -183,11 +183,13 @@ class Worker:
             report["rejected_by_reason"].append("low_confidence"); return
         records = self.service.list(ListQuery(status="active"))
         if any(normalize_content(record.content) == normalize_content(content) for record in records): report["rejected_by_reason"].append("duplicate"); return
-        embedded = self.service.ollama.embed([content, *[record.content for record in records]])
-        if isinstance(embedded, DegradedStatus) or len(embedded.vectors) != len(records) + 1 or not embedded.vectors or any(len(vector) != len(embedded.vectors[0]) for vector in embedded.vectors):
+        similar = self.service.similar_vectors(content, records)
+        if isinstance(similar, DegradedStatus):
             raise RuntimeError("capture embedding unavailable")
-        for prior, vector in zip(records, embedded.vectors[1:]):
-            if cosine(embedded.vectors[0], vector) < 0.97:
+        embedded, vectors = similar
+        for prior in records:
+            vector = vectors.get(str(prior.id))
+            if vector is None or cosine(embedded.vectors[0], vector) < 0.97:
                 continue
             if str(prior.id) in candidate["supersedes"]:
                 continue
@@ -205,6 +207,8 @@ class Worker:
             created = self.service.add(AddRequest(f"capture-{candidate_id}", candidate["type"], candidate["scope"], content, candidate["project"], candidate["importance"], candidate["confidence"], False, tuple(candidate["tags"]), payload["client"], payload.get("source_session", "unknown"), tuple(candidate["supersedes"])))
             capture_ids[candidate_id] = str(created.id)
             atomic_json(mapping, capture_ids)
+        if created.content == content:
+            self.service.index.remember_embeddings([created], embedded.vectors, embedded.model)
         report["accepted"].append(candidate_id)
         self.queue_sync()
 

@@ -107,7 +107,7 @@ def test_capture_degraded_relation_retries_without_canonical_mutation(tmp_path, 
         assert outbox.counts()["ready"] == 1
 
 
-@pytest.mark.parametrize("vectors", [lambda texts: [], lambda texts: [[1.0, 0.0]], lambda texts: [[1.0], [1.0, 0.0]]])
+@pytest.mark.parametrize("vectors", [lambda texts: [], lambda texts: [[1.0, 0.0]] * (len(texts) + 1), lambda texts: [[1.0], [1.0, 0.0]]])
 def test_capture_bad_embedding_batches_retry_without_canonical_mutation(tmp_path, vectors):
     responses = {"capture": review("Candidate public fact."), "relation": json.dumps({"relation": "distinct"}),
                  "embed": vectors}
@@ -117,3 +117,38 @@ def test_capture_bad_embedding_batches_retry_without_canonical_mutation(tmp_path
         assert runner.run(True)["retrying"] == 1
         assert service.get(prior.id).status == "active"
         assert len(service.list(ListQuery())) == 1
+
+
+def test_capture_embeds_each_memory_once_then_only_the_candidate(tmp_path):
+    batches = []
+
+    def embed(texts):
+        batches.append(len(texts))
+        return [[1.0, 0.0] if "Existing" in text else [0.0, 1.0] for text in texts]
+
+    responses = {"capture": review("Candidate public fact."), "relation": json.dumps({"relation": "contradiction"}),
+                 "embed": embed}
+    with ollama(responses) as url:
+        service, _, outbox, runner = worker(tmp_path, url)
+        enqueue(outbox, "first")
+        assert runner.run(True)["accepted"] == ["first"]
+        # The candidate, then the one memory with no cached vector.
+        assert batches == [1, 1]
+
+        batches.clear()
+        responses["capture"] = review("Another candidate fact.")
+        enqueue(outbox, "second")
+        assert runner.run(True)["accepted"] == ["second"]
+        # Both stored memories are cached, including the one accepted above.
+        assert batches == [1]
+
+
+def test_editing_a_memory_drops_its_cached_vector(tmp_path):
+    from agent_memory.model import UpdateRequest
+    home = tmp_path / "state"
+    service = MemoryService(MarkdownStore(tmp_path / "vault", home), MemoryIndex(home / "index.sqlite3"))
+    record = service.add(AddRequest("prior", "fact", "global", "Original public fact."))
+    service.index.remember_embeddings([record], [[1.0, 0.0]], "fixture-embed")
+    assert service.index.embeddings([record])
+    service.update(UpdateRequest(record.id, record.revision, record.content_hash, "edit", content="Edited public fact."))
+    assert service.index.embeddings([record]) == {}

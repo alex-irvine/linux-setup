@@ -21,7 +21,7 @@ from .model import (AddRequest, DeleteRequest, DeleteResult, FeedbackRequest, In
                     ReconcileReport, ScopeRequest, SearchQuery, SearchResult, UpdateRequest,
                     content_hash, delete_result_from_dict, record_from_dict, request_hash,
                     utc_now, uuid7)
-from .ollama import DegradedStatus, OllamaClient
+from .ollama import DegradedStatus, EmbeddingBatch, OllamaClient
 from .rank import cosine, reciprocal_rank
 
 
@@ -548,6 +548,11 @@ class MarkdownStore:
             raise MemoryError("revision_conflict", "memory revision or content hash no longer matches")
 
 
+# Texts per embedding request when filling the cache, so a cold cache never
+# sends the whole vault in one request.
+EMBED_BATCH = 128
+
+
 class MemoryService:
     def __init__(self, store: MarkdownStore, index: MemoryIndex) -> None:
         self.store, self.index, self.ollama = store, index, OllamaClient()
@@ -560,6 +565,36 @@ class MemoryService:
 
     def list(self, query: ListQuery) -> list[MemoryRecord]:
         return self.index.list(query)
+
+    def similar_vectors(self, content: str, records: list[MemoryRecord]) -> tuple[EmbeddingBatch, dict[str, list[float]]] | DegradedStatus:
+        """Embed content once and return cached vectors for records.
+
+        Only records with no cached vector from the same model are embedded,
+        in batches, and their vectors are cached, so checking a capture costs
+        the same however large the vault grows.
+        """
+        embedded = self.ollama.embed([content])
+        if isinstance(embedded, DegradedStatus):
+            return embedded
+        if not self._valid_vectors(embedded.vectors, 1):
+            return DegradedStatus("invalid embedding response")
+        dimensions = len(embedded.vectors[0])
+        cached = self.index.embeddings(records)
+        incompatible = [memory_id for memory_id, (vector, model) in cached.items()
+                        if len(vector) != dimensions or model != embedded.model]
+        self.index.remove_embeddings(incompatible)
+        vectors = {memory_id: vector for memory_id, (vector, _) in cached.items() if memory_id not in incompatible}
+        missing = [record for record in records if str(record.id) not in vectors]
+        for start in range(0, len(missing), EMBED_BATCH):
+            batch = missing[start:start + EMBED_BATCH]
+            generated = self.ollama.embed([record.content for record in batch])
+            if isinstance(generated, DegradedStatus):
+                return generated
+            if generated.model != embedded.model or not self._valid_vectors(generated.vectors, len(batch), dimensions):
+                return DegradedStatus("invalid embedding response")
+            self.index.remember_embeddings(batch, generated.vectors, generated.model)
+            vectors.update({str(record.id): vector for record, vector in zip(batch, generated.vectors)})
+        return embedded, vectors
 
     def search(self, query: SearchQuery) -> SearchResult:
         lexical = self.index.search_lexical(query).memories

@@ -79,6 +79,9 @@ class MemoryIndex:
         values["pinned"] = int(record.pinned)
         values["supersedes"] = json.dumps(list(record.supersedes), separators=(",", ":"))
         with self._connect() as connection:
+            # A cached vector belongs to the text it was computed from.
+            connection.execute("DELETE FROM embeddings WHERE id IN (SELECT id FROM memories WHERE id = ? AND content != ?)",
+                               (values["id"], values["content"]))
             connection.execute("""INSERT OR REPLACE INTO memories
                 (id, type, scope, project, content, importance, confidence, pinned, tags,
                    status, revision, content_hash, created_at, updated_at, source_client, source_session, supersedes)
