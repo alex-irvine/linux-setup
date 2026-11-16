@@ -11,7 +11,10 @@ def write_executable(path: Path, content: str) -> None:
 
 def test_clean_home_install_is_idempotent_and_does_not_require_mem0(tmp_path):
     root = Path(__file__).parents[4]
-    dotfiles = root.parents[1] / "dotfiles-shared-agent-memory"
+    dotfiles = tmp_path / "dotfiles"
+    (dotfiles / "agents/.agents/memory").mkdir(parents=True)
+    (dotfiles / "systemd/.config/systemd/user").mkdir(parents=True)
+    (dotfiles / "systemd/.config/systemd/user/agent-memory-worker.timer").touch()
     home = tmp_path / "home"
     project = tmp_path / "project"
     state = home / "runtime/state"

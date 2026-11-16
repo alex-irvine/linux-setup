@@ -161,10 +161,12 @@ class Worker:
     def ensure_dirty_sync(self) -> None:
         if self.service.store.sync_dirty() and not self.outbox.has_sync(): self.queue_sync()
 
-    def _capture(self, payload: dict, report: dict) -> None:
+    def _capture(self, payload: dict, report: dict, envelope_id: str) -> None:
         if payload.get("event") != "completed_work" or payload.get("version") != 1 or payload.get("client") not in {"claude", "opencode", "codex", "hermes"} or not isinstance(payload.get("evidence"), dict):
             report["rejected_by_reason"].append("invalid_capture_event"); return
-        candidate_id = payload.get("id", "capture")
+        # Hooks omit a payload ID. The persisted queue ID is unique per job and
+        # remains stable across retries and recovery of interrupted workers.
+        candidate_id = payload.get("id") or envelope_id
         evidence = payload["evidence"]
         if unsafe_reason(" ".join(str(value) for value in evidence.values())):
             report["rejected_by_reason"].append("unsafe_evidence"); return
@@ -216,7 +218,7 @@ class Worker:
             path, envelope = claimed
             retry = False
             try:
-                if envelope["kind"] == "capture": self._capture(envelope["payload"], report)
+                if envelope["kind"] == "capture": self._capture(envelope["payload"], report, envelope["id"])
                 else:
                     marker = self.home / "sync-paused.json"
                     if marker.exists(): report["sync"] = {"paused": True, "reason": json.loads(marker.read_text(encoding="utf-8"))["reason"]}; self.outbox.release(path, envelope); break
