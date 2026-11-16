@@ -151,3 +151,14 @@ def test_mutation_wakeup_is_nonblocking_and_fail_soft(git_fixture, tmp_path):
     assert created["content"] == "wake safely"
     assert (tmp_path / "wake.log").read_text(encoding="utf-8") == "--user start --no-block agent-memory-worker.service"
     assert memory(repo, env, "status")["sync_state"]["scheduling_error"] == "agent-memory worker wakeup failed"
+
+
+def test_sync_commits_notes_in_a_new_project_directory_named_like_a_note(git_fixture):
+    repo, remote, env = git_fixture
+    created = memory(repo, env, "add", "--request-id", "p", "--type", "lesson", "--scope", "project",
+                     "--project", "agents.md", "--content", "A lesson filed under an odd project name.")
+    report = memory(repo, env, "worker", "--drain")
+    assert report["sync"]["commit_created"] is True, report
+    assert git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").stdout.splitlines() == [
+        "agents/.agents/memory/Projects/agents.md/" + created["id"] + ".md"]
+    assert git(remote, "rev-parse", "main").stdout == git(repo, "rev-parse", "HEAD").stdout

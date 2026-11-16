@@ -91,10 +91,13 @@ class GitSync:
                 unsafe = self._unsafe_state(repo)
                 if unsafe:
                     return SyncReport(error=f"unsafe git state: {unsafe}", retryable=True)
-                changed = self._git(repo, "status", "--porcelain=v1", "--", str(vault_relpath)).stdout.splitlines()
+                # List every untracked file: a new directory otherwise shows as
+                # one line, so its notes go unchecked, and a directory whose
+                # name ends in .md was opened as a note.
+                changed = self._git(repo, "status", "--porcelain=v1", "--untracked-files=all", "--", str(vault_relpath)).stdout.splitlines()
                 for line in changed:
                     path = repo / line[3:]
-                    if path.suffix == ".md" and path.exists():
+                    if path.suffix == ".md" and path.is_file():
                         frontmatter.load(path.read_text(encoding="utf-8"))
                 before_index = self._git(repo, "write-tree").stdout.strip()
                 before_worktree = self._worktree_snapshot(repo, vault)
