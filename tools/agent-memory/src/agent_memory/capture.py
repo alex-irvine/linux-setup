@@ -131,9 +131,10 @@ class Outbox:
 
     def claim(self, kinds: set[str] | None = None) -> tuple[Path, dict] | None:
         with self.locked():
-            candidates = sorted(self.ready.glob("*.json"), key=lambda path: json.loads(path.read_text(encoding="utf-8"))["created_at"])
-            for path in candidates:
-                envelope = json.loads(path.read_text(encoding="utf-8"))
+            # Sync jobs go first, so a capture backlog never holds back
+            # committing what is already accepted.
+            envelopes = [(path, json.loads(path.read_text(encoding="utf-8"))) for path in self.ready.glob("*.json")]
+            for path, envelope in sorted(envelopes, key=lambda item: (item[1]["kind"] != "sync", item[1]["created_at"])):
                 if kinds is not None and envelope["kind"] not in kinds:
                     continue
                 if envelope["next_attempt_at"] <= time.time():
@@ -179,10 +180,13 @@ class Worker:
         self.outbox.recover()
 
     def _sync_payload(self) -> dict | None:
-        repo = self.repo or self.service.store.vault
+        # The vault is normally reached through a stowed symlink
+        # (~/.agents/memory), so the repository is found from its real path.
+        vault = self.service.store.vault.resolve()
+        repo = (self.repo or vault).resolve()
         while repo != repo.parent and not (repo / ".git").exists(): repo = repo.parent
-        if not (repo / ".git").exists() or not self.service.store.vault.is_relative_to(repo): return None
-        return {"repo": str(repo), "vault_relpath": str(VAULT_RELPATH)} if self.service.store.vault.relative_to(repo) == VAULT_RELPATH else None
+        if not (repo / ".git").exists() or not vault.is_relative_to(repo): return None
+        return {"repo": str(repo), "vault_relpath": str(VAULT_RELPATH)} if vault.relative_to(repo) == VAULT_RELPATH else None
 
     def queue_sync(self) -> None:
         payload = self._sync_payload()

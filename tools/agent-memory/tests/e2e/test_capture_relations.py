@@ -172,3 +172,22 @@ def test_capture_that_keeps_failing_moves_to_failed_with_its_error(tmp_path, cap
         assert failed["attempts"] == MAX_ATTEMPTS
         assert failed["last_error"].startswith("RuntimeError: capture review")
         assert "moved to outbox/failed" in capsys.readouterr().err
+
+
+def test_sync_is_found_through_a_symlinked_vault_and_runs_before_captures(tmp_path):
+    import subprocess
+    repo = tmp_path / "dotfiles"
+    vault = repo / "agents/.agents/memory"
+    vault.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    link = tmp_path / "home/.agents/memory"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(vault)
+    home = tmp_path / "state"
+    service = MemoryService(MarkdownStore(link, home), MemoryIndex(home / "index.sqlite3"))
+    outbox, runner = Outbox(home), Worker(service, home)
+    enqueue(outbox, "older-capture")
+    runner.queue_sync()
+    _, envelope = outbox.claim()
+    assert envelope["kind"] == "sync"
+    assert envelope["payload"] == {"repo": str(repo.resolve()), "vault_relpath": "agents/.agents/memory"}
