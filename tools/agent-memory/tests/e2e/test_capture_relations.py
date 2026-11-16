@@ -46,7 +46,7 @@ def ollama(responses):
 
 
 def review(content, supersedes=()):
-    return json.dumps({"type": "fact", "scope": "global", "project": None, "content": content,
+    return json.dumps({"type": "lesson", "scope": "global", "project": None, "content": content,
                        "importance": 0.8, "confidence": 0.9, "tags": ["fixture"],
                        "durability": True, "supersedes": list(supersedes)})
 
@@ -191,3 +191,16 @@ def test_sync_is_found_through_a_symlinked_vault_and_runs_before_captures(tmp_pa
     _, envelope = outbox.claim()
     assert envelope["kind"] == "sync"
     assert envelope["payload"] == {"repo": str(repo.resolve()), "vault_relpath": "agents/.agents/memory"}
+
+
+def test_capture_drops_facts_about_finished_work(tmp_path):
+    fact = json.loads(review("Candidate public fact."))
+    fact["type"] = "fact"
+    responses = {"capture": json.dumps(fact), "relation": json.dumps({"relation": "distinct"}),
+                 "embed": lambda texts: [[1.0, 0.0] for _ in texts]}
+    with ollama(responses) as url:
+        service, _, outbox, runner = worker(tmp_path, url)
+        enqueue(outbox)
+        report = runner.run(True)
+        assert report["accepted"] == [] and report["rejected_by_reason"] == ["not_captured_type"]
+        assert len(service.list(ListQuery())) == 1

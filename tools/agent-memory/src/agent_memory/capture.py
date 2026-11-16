@@ -17,6 +17,11 @@ from .ollama import DegradedStatus
 from .rank import cosine
 
 
+# Automatic captures keep only what changes how future work is done. A
+# fact about finished work is in its commit, ticket or code; it can still be
+# stored on purpose with `memoryctl add` or the memory_add tool.
+CAPTURED_TYPES = frozenset({"preference", "correction", "decision", "lesson", "convention"})
+
 # A capture or sync that fails this many times moves to outbox/failed with
 # its last error, instead of being retried every run forever.
 MAX_ATTEMPTS = 10
@@ -213,6 +218,8 @@ class Worker:
         if reason:
             report["rejected_by_reason"].append(reason); return
         assert candidate is not None
+        if candidate["type"] not in CAPTURED_TYPES:
+            report["rejected_by_reason"].append("not_captured_type"); return
         content = candidate["content"]
         explicit = candidate["type"] in {"preference", "correction"} and bool(payload.get("explicit_user"))
         if candidate["confidence"] < 0.8 and not explicit:

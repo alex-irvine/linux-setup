@@ -10,7 +10,7 @@ import pytest
 from agent_memory.ollama import DegradedStatus, EmbeddingBatch, OllamaClient
 
 
-REVIEW = {"type": "fact", "scope": "global", "project": None, "content": "Completed migration; tests pass.",
+REVIEW = {"type": "lesson", "scope": "global", "project": None, "content": "Completed migration; tests pass.",
           "importance": 0.5, "confidence": 0.95, "tags": ["ci"], "durability": True, "supersedes": []}
 
 
