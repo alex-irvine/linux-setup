@@ -8,6 +8,8 @@ import sys
 import tempfile
 import time
 import re
+import shutil
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -27,6 +29,18 @@ CAPTURED_TYPES = frozenset({"preference", "correction", "decision", "lesson", "c
 MAX_ATTEMPTS = 10
 
 
+# When the queue has not emptied for this many hours, the user gets a
+# desktop notification (AGENT_MEMORY_BACKLOG_ALERT_HOURS overrides it). Only
+# time the worker is running counts, so a laptop that was asleep or switched
+# off does not raise it, and an Ollama server that answers only at the office
+# raises it only when the local fallback has not kept up either.
+BACKLOG_ALERT_HOURS = 24.0
+
+# A longer gap between two worker runs means the machine was asleep or off,
+# and counts as this much waiting time.
+MAX_COUNTED_GAP = 15 * 60
+
+
 class ProviderUnavailable(RuntimeError):
     """The review or embedding provider cannot be reached; nothing is wrong with the capture."""
 
@@ -42,6 +56,32 @@ def require(result, what: str):
             raise ProviderUnavailable(f"{what}: {result.reason}")
         raise RuntimeError(f"{what}: {result.reason}")
     return result
+
+
+def backlog_message(waiting: int, state: dict, report: dict, server_url: str) -> str:
+    """Say how far behind the queue is and the likely cause."""
+    hours = state["waiting_seconds"] / 3600
+    parts = [f"{waiting} memory jobs are waiting; the queue has not emptied in {hours:.0f} hours of laptop time."]
+    answered = state.get("server_answered_at")
+    if answered:
+        parts.append(f"The Ollama server at {server_url} last answered on "
+                     f"{time.strftime('%a %d %b at %H:%M', time.localtime(answered))}.")
+    else:
+        parts.append(f"No answer from the Ollama server at {server_url} has been recorded.")
+    reason = report.get("provider_unavailable") or (report.get("sync") or {}).get("reason")
+    if reason:
+        parts.append(f"Last run: {reason}.")
+    return " ".join(parts)
+
+
+def notify(message: str) -> None:
+    if not shutil.which("notify-send"):
+        return
+    try:
+        subprocess.run(["notify-send", "--app-name=agent-memory", "Memory backlog is not clearing", message],
+                       check=False, capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as error:
+        log(f"notify-send failed: {error}")
 
 
 def unsafe_reason(content: str) -> str | None:
@@ -315,4 +355,36 @@ class Worker:
             processed += 1
             if (limit is not None and processed >= limit) or (limit is None and not drain): break
         report["outbox"] = self.outbox.counts()
+        self._track_backlog(report)
         return report
+
+    def _track_backlog(self, report: dict) -> None:
+        """Count how long the queue has stayed non-empty and alert when it is too long."""
+        limit = float(os.environ.get("AGENT_MEMORY_BACKLOG_ALERT_HOURS", BACKLOG_ALERT_HOURS)) * 3600
+        path, now = self.home / "backlog.json", time.time()
+        ollama = self.service.ollama
+        waiting = report["outbox"]["ready"]
+        with self.outbox.locked():
+            state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            if getattr(ollama, "provider", None) == "primary" and not self.provider_down:
+                state["server_answered_at"] = now
+            if waiting:
+                gap = now - state.get("last_run", now)
+                state["waiting_seconds"] = state.get("waiting_seconds", 0.0) + min(max(gap, 0.0), MAX_COUNTED_GAP)
+            else:
+                state["waiting_seconds"], state["alerted_at"] = 0.0, None
+            state["last_run"] = now
+            # Alert once when the limit is reached, then again after each
+            # further limit's worth of waiting.
+            alerted = state.get("alerted_at")
+            due = bool(waiting) and state["waiting_seconds"] >= limit and (
+                alerted is None or state["waiting_seconds"] - alerted >= limit)
+            if due:
+                state["alerted_at"] = state["waiting_seconds"]
+            atomic_json(path, state)
+        report["backlog_alert"] = None
+        if due:
+            message = backlog_message(waiting, state, report, getattr(ollama, "url", "unknown"))
+            report["backlog_alert"] = message
+            log(message)
+            notify(message)
