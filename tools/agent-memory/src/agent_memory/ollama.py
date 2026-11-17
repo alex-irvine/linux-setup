@@ -7,6 +7,16 @@ from typing import Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from . import resources
+
+
+FALLBACK_KEEP_ALIVE = "1m"
+FALLBACK_NUM_CTX = 4096
+
+
+def _tagged(model: str) -> str:
+    return model if ":" in model else f"{model}:latest"
+
 
 @dataclass(frozen=True)
 class EmbeddingBatch:
@@ -28,13 +38,15 @@ class OllamaClient:
         self.timeout = timeout if timeout is not None else float(os.environ.get("OLLAMA_TIMEOUT", "60"))
         self.review_model = review_model or os.environ.get("OLLAMA_REVIEW_MODEL", "qwen3:1.7b")
         self.embed_model = embed_model or os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-        fallback_url = os.environ.get("OLLAMA_FALLBACK_URL", "").rstrip("/")
-        self.fallback_key = os.environ.get("OPENROUTER_API_KEY") or None
-        self.fallback_url = fallback_url if fallback_url and self.fallback_key else None
-        self.fallback_review_model = os.environ.get("OLLAMA_FALLBACK_REVIEW_MODEL", "openai/gpt-4o-mini")
-        self.fallback_embed_model = os.environ.get("OLLAMA_FALLBACK_EMBED_MODEL", "openai/text-embedding-3-small")
-        self.fallback_embed_dimensions = int(os.environ.get("OLLAMA_FALLBACK_EMBED_DIMENSIONS", "768"))
+        # A second Ollama, normally this machine's own, with the same models.
+        # It is used only while the primary does not answer.
+        self.fallback_url = os.environ.get("OLLAMA_FALLBACK_URL", "").rstrip("/") or None
         self.fallback_timeout = float(os.environ.get("OLLAMA_FALLBACK_TIMEOUT", "120"))
+        self.fallback_limit = int(os.environ.get("OLLAMA_FALLBACK_LIMIT", "10"))
+        self.fallback_threads = int(os.environ.get("OLLAMA_FALLBACK_THREADS", "4"))
+        self.fallback_min_cpu_idle = float(os.environ.get("OLLAMA_FALLBACK_MIN_CPU_IDLE", "50"))
+        self.fallback_min_memory = float(os.environ.get("OLLAMA_FALLBACK_MIN_MEMORY", "25"))
+        self.fallback_on_battery = os.environ.get("OLLAMA_FALLBACK_ON_BATTERY", "0") == "1"
         self.probe_timeout = float(os.environ.get("OLLAMA_PROBE_TIMEOUT", "3"))
         self.provider: str | None = None
 
@@ -46,18 +58,25 @@ class OllamaClient:
             try:
                 with urlopen(f"{self.url}/api/tags", timeout=self.probe_timeout) as response:
                     response.read()
+            except HTTPError:
+                pass
             except OSError:
                 self.provider = "fallback"
         return self.provider
 
     def available(self) -> DegradedStatus | None:
-        """Return None when a provider answers, or why none does.
+        """Return None when a provider can take work now, or why none can.
 
         Uses the short probe timeout, so an unreachable host costs seconds
-        rather than one full request timeout per queued capture.
+        rather than one full request timeout per queued capture. The local
+        fallback also has to have spare capacity: it must not be running
+        another model, and the machine must have the CPU, memory and power
+        set by the OLLAMA_FALLBACK_* limits.
         """
         if self._select_provider() == "fallback":
-            return None
+            reason = self._fallback_shortage()
+            return DegradedStatus(f"Ollama at {self.url} unreachable and local Ollama unused: {reason}",
+                                  fallback=True) if reason else None
         try:
             with urlopen(f"{self.url}/api/tags", timeout=self.probe_timeout) as response:
                 response.read()
@@ -67,10 +86,28 @@ class OllamaClient:
             return DegradedStatus(f"Ollama at {self.url} unreachable: {error}", fallback=True)
         return None
 
-    def _post_json(self, url: str, body: dict, timeout: float,
-                   headers: dict | None = None) -> dict | DegradedStatus:
+    def _fallback_shortage(self) -> str | None:
+        try:
+            with urlopen(f"{self.fallback_url}/api/ps", timeout=self.probe_timeout) as response:
+                loaded = json.loads(response.read()).get("models") or []
+        except (OSError, ValueError) as error:
+            return f"{self.fallback_url} unreachable: {error}"
+        ours = {_tagged(self.review_model), _tagged(self.embed_model)}
+        others = sorted({_tagged(str(model.get("name", ""))) for model in loaded} - ours)
+        if others:
+            return f"it is running {', '.join(others)}"
+        return resources.shortage(self.fallback_min_cpu_idle, self.fallback_min_memory, self.fallback_on_battery)
+
+    def _fallback_body(self, body: dict) -> dict:
+        # Fewer threads leave CPU for the user's work, a small context keeps
+        # the model's memory down, and a short keep_alive unloads it soon
+        # after the run instead of after Ollama's default.
+        return {**body, "keep_alive": FALLBACK_KEEP_ALIVE,
+                "options": {"num_thread": self.fallback_threads, "num_ctx": FALLBACK_NUM_CTX}}
+
+    def _post_json(self, url: str, body: dict, timeout: float) -> dict | DegradedStatus:
         request = Request(url, data=json.dumps(body).encode(),
-                          headers={"Content-Type": "application/json", **(headers or {})}, method="POST")
+                          headers={"Content-Type": "application/json"}, method="POST")
         try:
             with urlopen(request, timeout=timeout) as response:
                 return json.loads(response.read())
@@ -83,37 +120,24 @@ class OllamaClient:
         except (OverflowError, TypeError, ValueError) as error:
             return DegradedStatus(str(error))
 
-    def _generate_primary(self, prompt: str) -> str | DegradedStatus:
-        payload = self._post_json(f"{self.url}/api/generate",
-                                  {"model": self.review_model, "stream": False, "think": False,
-                                   "format": "json", "prompt": prompt}, self.timeout)
+    def _generate_at(self, provider: str, prompt: str) -> str | DegradedStatus:
+        body = {"model": self.review_model, "stream": False, "think": False, "format": "json", "prompt": prompt}
+        if provider == "fallback":
+            payload = self._post_json(f"{self.fallback_url}/api/generate", self._fallback_body(body), self.fallback_timeout)
+        else:
+            payload = self._post_json(f"{self.url}/api/generate", body, self.timeout)
         if isinstance(payload, DegradedStatus):
             return payload
         response = payload.get("response")
         return response if isinstance(response, str) else DegradedStatus("invalid generate response")
 
-    def _generate_fallback(self, prompt: str) -> str | DegradedStatus:
-        payload = self._post_json(f"{self.fallback_url}/chat/completions",
-                                  {"model": self.fallback_review_model,
-                                   "messages": [{"role": "user", "content": prompt}],
-                                   "response_format": {"type": "json_object"}},
-                                  self.fallback_timeout,
-                                  {"Authorization": f"Bearer {self.fallback_key}"})
-        if isinstance(payload, DegradedStatus):
-            return payload
-        try:
-            content = payload["choices"][0]["message"]["content"]
-        except (IndexError, KeyError, TypeError) as error:
-            return DegradedStatus(str(error))
-        return content if isinstance(content, str) else DegradedStatus("invalid fallback response")
-
     def _generate(self, prompt: str) -> str | DegradedStatus:
         if self._select_provider() == "fallback":
-            return self._generate_fallback(prompt)
-        result = self._generate_primary(prompt)
+            return self._generate_at("fallback", prompt)
+        result = self._generate_at("primary", prompt)
         if isinstance(result, DegradedStatus) and result.fallback and self.fallback_url:
             self.provider = "fallback"
-            return self._generate_fallback(prompt)
+            return self._generate_at("fallback", prompt)
         return result
 
     @staticmethod
@@ -128,33 +152,23 @@ class OllamaClient:
         except (OverflowError, ValueError) as error:
             return DegradedStatus(str(error))
 
-    def _embed_primary(self, texts: Sequence[str]) -> EmbeddingBatch | DegradedStatus:
-        payload = self._post_json(f"{self.url}/api/embed",
-                                  {"model": self.embed_model, "input": list(texts)}, self.timeout)
+    def _embed_at(self, provider: str, texts: Sequence[str]) -> EmbeddingBatch | DegradedStatus:
+        body = {"model": self.embed_model, "input": list(texts)}
+        if provider == "fallback":
+            payload = self._post_json(f"{self.fallback_url}/api/embed", self._fallback_body(body), self.fallback_timeout)
+        else:
+            payload = self._post_json(f"{self.url}/api/embed", body, self.timeout)
         if isinstance(payload, DegradedStatus):
             return payload
-        return self._embedding_batch(payload.get("embeddings"), len(texts), "primary", self.embed_model)
-
-    def _embed_fallback(self, texts: Sequence[str]) -> EmbeddingBatch | DegradedStatus:
-        payload = self._post_json(f"{self.fallback_url}/embeddings",
-                                  {"model": self.fallback_embed_model, "input": list(texts),
-                                   "dimensions": self.fallback_embed_dimensions},
-                                  self.fallback_timeout,
-                                  {"Authorization": f"Bearer {self.fallback_key}"})
-        if isinstance(payload, DegradedStatus):
-            return payload
-        data = payload.get("data")
-        vectors = [item.get("embedding") if isinstance(item, dict) else None
-                   for item in data] if isinstance(data, list) else None
-        return self._embedding_batch(vectors, len(texts), "fallback", self.fallback_embed_model)
+        return self._embedding_batch(payload.get("embeddings"), len(texts), provider, self.embed_model)
 
     def embed(self, texts: Sequence[str]) -> EmbeddingBatch | DegradedStatus:
         if self._select_provider() == "fallback":
-            return self._embed_fallback(texts)
-        result = self._embed_primary(texts)
+            return self._embed_at("fallback", texts)
+        result = self._embed_at("primary", texts)
         if isinstance(result, DegradedStatus) and result.fallback and self.fallback_url:
             self.provider = "fallback"
-            return self._embed_fallback(texts)
+            return self._embed_at("fallback", texts)
         return result
 
     def review_capture(self, candidate: dict) -> dict | DegradedStatus:

@@ -182,6 +182,7 @@ class Worker:
     def __init__(self, service, home: Path, repo: Path | None = None) -> None:
         self.service, self.home, self.outbox, self.repo = service, home, Outbox(home), repo
         self.provider_down = None
+        self.local_captures = 0
         self.outbox.recover()
 
     def _sync_payload(self) -> dict | None:
@@ -200,6 +201,28 @@ class Worker:
     def ensure_dirty_sync(self) -> None:
         if self.service.store.sync_dirty() and not self.outbox.has_sync(): self.queue_sync()
 
+    def _require_provider(self) -> None:
+        """Raise ProviderUnavailable unless a provider can take this capture.
+
+        The Ollama server is checked once per run. The local fallback shares
+        this machine with the user's work, so its capacity is checked again
+        before every capture, and it takes at most OLLAMA_FALLBACK_LIMIT
+        captures per run. A capture that cannot run waits for the next run.
+        """
+        ollama = self.service.ollama
+        if self.provider_down is None or (self.provider_down is False and ollama.provider == "fallback"):
+            first = self.provider_down is None
+            self.provider_down = ollama.available() or False
+            if first and not self.provider_down and ollama.provider == "fallback":
+                log(f"Ollama at {ollama.url} unreachable; using local Ollama for up to {ollama.fallback_limit} captures")
+        if self.provider_down is False and ollama.provider == "fallback":
+            if self.local_captures >= ollama.fallback_limit:
+                self.provider_down = DegradedStatus(f"local Ollama took its {ollama.fallback_limit} captures for this run", fallback=True)
+            else:
+                self.local_captures += 1
+        if self.provider_down:
+            raise ProviderUnavailable(self.provider_down.reason)
+
     def _capture(self, payload: dict, report: dict, envelope_id: str) -> None:
         if payload.get("event") != "completed_work" or payload.get("version") != 1 or payload.get("client") not in {"claude", "opencode", "codex", "hermes"} or not isinstance(payload.get("evidence"), dict):
             report["rejected_by_reason"].append("invalid_capture_event"); return
@@ -209,10 +232,7 @@ class Worker:
         evidence = payload["evidence"]
         if unsafe_reason(" ".join(str(value) for value in evidence.values())):
             report["rejected_by_reason"].append("unsafe_evidence"); return
-        if self.provider_down is None:
-            self.provider_down = self.service.ollama.available() or False
-        if self.provider_down:
-            raise ProviderUnavailable(self.provider_down.reason)
+        self._require_provider()
         review = require(self.service.ollama.review_capture(payload), "capture review")
         candidate, reason = reviewed_candidate(payload, review)
         if reason:
@@ -257,6 +277,7 @@ class Worker:
         processed = 0
         kinds: set[str] | None = None
         self.provider_down = None
+        self.local_captures = 0
         while True:
             claimed = self.outbox.claim(kinds)
             if not claimed: break
